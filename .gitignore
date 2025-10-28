@@ -16,3 +16,14 @@ pkg/ebpf/rdmaTracing.o
 # SpecStory explanation file
 .specstory
 /docs/troubleshooting/
+
+# Build process generated files and directories
+supervisor/
+config/
+Dockerfile.supervisor.*
+Dockerfile.simple
+controller
+agent
+temp-controller
+temp-agent
+*.tar.gz
