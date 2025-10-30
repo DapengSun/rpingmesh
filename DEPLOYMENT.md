@@ -2,7 +2,22 @@
 
 ## 快速开始
 
-### 1. 构建镜像
+### 1. 环境检测
+
+在部署前，建议先检测RDMA环境兼容性：
+
+```bash
+# 构建环境监测镜像
+./build_monitor.sh
+
+# 快速环境检测
+docker run -it --rm --privileged --network host rpingmesh-monitor:latest ./quick_check.sh
+
+# 完整环境检测报告
+docker run -it --rm --privileged --network host rpingmesh-monitor:latest ./comprehensive_test.sh
+```
+
+### 2. 构建镜像
 
 #### 分离式部署（算力平台）
 ```bash
@@ -21,7 +36,7 @@
 ./build_unified.sh
 ```
 
-### 2. 创建配置文件
+### 3. 创建配置文件
 
 ```bash
 # 创建配置目录
@@ -44,7 +59,7 @@ ebpf-enabled: false
 EOF
 ```
 
-### 3. 部署服务
+### 4. 部署服务
 
 #### 分离式部署
 ```bash
@@ -76,6 +91,26 @@ docker run -d --name rqlite --network rpingmesh-network \
 # 启动R-Pingmesh（包含Controller和Agent）
 docker run -d --name rpingmesh --privileged --network rpingmesh-network \
   -v $(pwd)/config:/config:ro rpingmesh-deployment:latest
+```
+
+## 环境监测
+
+### 监测工具
+```bash
+# 构建监测镜像
+./build_monitor.sh
+
+# 快速检测
+docker run -it --rm --privileged --network host rpingmesh-monitor:latest ./quick_check.sh
+
+# 完整检测报告
+docker run -it --rm --privileged --network host rpingmesh-monitor:latest ./comprehensive_test.sh
+
+# 增强RDMA测试
+docker run -it --rm --privileged --network host rpingmesh-monitor:latest ./enhanced_rdma_test.sh
+
+# 交互式使用
+docker run -it --rm --privileged --network host rpingmesh-monitor:latest
 ```
 
 ## 管理命令
@@ -131,10 +166,14 @@ docker rm agent controller rqlite
 docker save rpingmesh-rqlite:latest | gzip > rqlite.tar.gz
 docker save rpingmesh-controller:latest | gzip > controller.tar.gz
 docker save rpingmesh-agent:latest | gzip > agent.tar.gz
+docker save rpingmesh-analyzer:latest | gzip > analyzer.tar.gz
 
 # 统一镜像部署
 docker save rpingmesh-rqlite:latest | gzip > rqlite.tar.gz
 docker save rpingmesh-deployment:latest | gzip > rpingmesh.tar.gz
+
+# 环境监测镜像
+docker save rpingmesh-checker:latest | gzip > checker.tar.gz
 ```
 
 ### 导入镜像
@@ -144,6 +183,8 @@ docker load < controller.tar.gz
 docker load < agent.tar.gz
 # 或
 docker load < rpingmesh.tar.gz
+# 或
+docker load < checker.tar.gz
 ```
 
 ## 配置说明
@@ -165,4 +206,6 @@ docker load < rpingmesh.tar.gz
 docker exec -it controller /bin/bash
 docker exec -it agent /bin/bash
 docker exec -it rpingmesh /bin/bash
+docker exec -it rqlite /bin/bash
 ```
+

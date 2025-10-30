@@ -16,7 +16,7 @@ func main() {
 	var configOutput string
 
 	config.SetupAnalyzerFlags(flags)
-	flags.StringVar(&configOutput, "config-output", "analyzer.yaml", "Path where to write the default configuration")
+	// flags.StringVar(&configOutput, "config-output", "analyzer.yaml", "Path where to write the default configuration")
 
 	// Version flag is handled in the config package, so no version logic here
 

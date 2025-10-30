@@ -20,6 +20,7 @@ pkg/ebpf/rdmaTracing.o
 # Build process generated files and directories
 supervisor/
 config/
+images/
 Dockerfile.supervisor.*
 Dockerfile.simple
 controller
