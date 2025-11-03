@@ -1,0 +1,118 @@
+services:
+  # RQLite database - used by Controller for RNIC registry storage
+  rqlite:
+    image: rpingmesh-rqlite:latest
+    container_name: rpingmesh-rqlite-e2e
+    ports:
+      - "4001:4001"
+      - "4002:4002"
+      - "2222:22"
+    environment:
+      - NODE_ID=172.28.0.10
+      - HTTP_ADDR=0.0.0.0:4001
+      - RAFT_ADDR=0.0.0.0:4002
+    networks:
+      rpingmesh-network:
+        ipv4_address: 172.28.0.10
+    volumes:
+      - ${RPINGMESH_DATA_DIR:-./data_dir}/rqlite:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4001/status | grep -q '\"ready\":true' || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # Controller service
+  controller:
+    image: rpingmesh-controller:latest
+    container_name: rpingmesh-controller-e2e
+    depends_on:
+      rqlite:
+        condition: service_healthy
+    ports:
+      - "50051:50051"
+    environment:
+      - RPINGMESH_CONTROLLER_LISTEN_ADDR=0.0.0.0:50051
+      - RPINGMESH_CONTROLLER_DATABASE_URI=http://rqlite:4001
+      - RPINGMESH_CONTROLLER_LOG_LEVEL=info
+      - LISTEN_ADDR=0.0.0.0:50051
+      - DATABASE_URI=http://rqlite:4001
+    networks:
+      rpingmesh-network:
+        ipv4_address: 172.28.0.20
+    volumes:
+      - ./config/controller.yaml:/app/config/controller.yaml:ro
+      - ${RPINGMESH_DATA_DIR:-./data_dir}/controller:/app/data
+    command: --config /app/config/controller.yaml
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-zv", "localhost", "50051"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Analyzer service
+  analyzer:
+    image: rpingmesh-analyzer:latest
+    container_name: rpingmesh-analyzer-e2e
+    depends_on:
+      rqlite:
+        condition: service_healthy
+    ports:
+      - "50052:50052"
+    environment:
+      - RPINGMESH_ANALYZER_LISTEN_ADDR=0.0.0.0:50052
+      - RPINGMESH_ANALYZER_DATABASE_URI=http://rqlite:4001
+      - RPINGMESH_ANALYZER_LOG_LEVEL=info
+      - LISTEN_ADDR=0.0.0.0:50052
+      - DATABASE_URI=http://rqlite:4001
+    networks:
+      rpingmesh-network:
+        ipv4_address: 172.28.0.30
+    volumes:
+      - ./config/analyzer.yaml:/app/config/analyzer.yaml:ro
+      - ${RPINGMESH_DATA_DIR:-./data_dir}/analyzer:/app/data
+    command: --config /app/config/analyzer.yaml
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-zv", "localhost", "50052"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+#
+#  # Agent service
+#  agent:
+#    image: rpingmesh-agent:latest
+#    container_name: rpingmesh-agent-e2e
+#    privileged: true
+#    depends_on:
+#      controller:
+#        condition: service_healthy
+#      analyzer:
+#        condition: service_healthy
+#    environment:
+#      - RPINGMESH_AGENT_DIR_PATH=/app
+#      - RPINGMESH_CONTROLLER_ADDR=controller:50051
+#      - RPINGMESH_ANALYZER_ADDR=analyzer:50052
+#      - RPINGMESH_ANALYZER_ENABLED=true
+#      - RPINGMESH_METRICS_ENABLED=false
+#      - RPINGMESH_AGENT_LOG_LEVEL=info
+#      - RPINGMESH_AGENT_PROBE_INTERVAL_MS=1000
+#      - RPINGMESH_AGENT_PINGLIST_UPDATE_INTERVAL_SEC=30
+#    networks:
+#      - rpingmesh-network
+#    volumes:
+#      - ./config/agent.yaml:/app/config/agent.yaml:ro
+#    restart: unless-stopped
+
+networks:
+  rpingmesh-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+

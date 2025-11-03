@@ -1,0 +1,41 @@
+#!/bin/bash
+set -e
+
+# Script 3: Initialize persistent directory structure
+# This script creates the directory structure for persistent storage under the parent directory
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Colors for output
+GREEN='\033[0;32m'
+NC='\033[0m' # No Color
+
+print_info() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+# Load environment variables from .env if exists
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    set -a
+    source "$SCRIPT_DIR/.env"
+    set +a
+fi
+
+# Get data directory from environment or use default
+DATA_DIR="${RPINGMESH_DATA_DIR:-./data_dir}"
+
+# Resolve to absolute path if relative
+if [[ "$DATA_DIR" != /* ]]; then
+    DATA_DIR="$(cd "$SCRIPT_DIR" && cd "$(dirname "$DATA_DIR")" && pwd)/$(basename "$DATA_DIR")"
+fi
+
+print_info "Initializing persistent directories under: $DATA_DIR"
+
+# Create directories
+mkdir -p "$DATA_DIR/controller"
+mkdir -p "$DATA_DIR/rqlite"
+mkdir -p "$DATA_DIR/analyzer"
+
+print_info "Directory initialization complete"
+

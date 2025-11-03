@@ -1,6 +1,5 @@
 FROM ubuntu:22.04
 
-# 运行时依赖、supervisor与SSH
 RUN sed -i 's/archive.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
     sed -i 's/security.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
     apt-get update && apt-get install -y --fix-missing \
@@ -9,10 +8,32 @@ RUN sed -i 's/archive.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/source
     openssh-server \
     libibverbs1 \
     librdmacm1 \
-    bash vim net-tools iputils-ping curl wget htop \
-    && rm -rf /var/lib/apt/lists/*
+    bash \
+    vim \
+    net-tools \
+    iputils-ping \
+    curl \
+    wget \
+    htop \
+    telnet \
+    netcat-openbsd \
+    iproute2 \
+    dnsutils \
+    coreutils \
+    procps \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
-RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d /var/run/sshd /app
+# Verify critical tools are installed and available
+RUN command -v nc >/dev/null && \
+    command -v telnet >/dev/null && \
+    command -v nslookup >/dev/null && \
+    command -v ping >/dev/null && \
+    command -v curl >/dev/null && \
+    command -v timeout >/dev/null && \
+    command -v bash >/dev/null
+
+RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d /var/run/sshd
 
 # SSH配置
 RUN echo 'root:rpingmesh' | chpasswd && \
@@ -22,8 +43,6 @@ RUN echo 'root:rpingmesh' | chpasswd && \
     echo 'Port 22' >> /etc/ssh/sshd_config && \
     echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config && \
     echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config
-
-WORKDIR /app
 
 # 二进制放置到不会被覆盖的路径
 COPY agent /usr/local/bin/agent

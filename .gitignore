@@ -28,3 +28,4 @@ agent
 temp-controller
 temp-agent
 *.tar.gz
+.idea
