@@ -16,6 +16,9 @@ RUN echo 'root:rpingmesh' | chpasswd && \
     echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config && \
     echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config
 
+# 创建必要的目录
+RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d /var/run/sshd /app/config /app/data
+
 WORKDIR /app
 COPY analyzer /usr/local/bin/analyzer
 

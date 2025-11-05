@@ -1,6 +1,5 @@
 FROM ubuntu:22.04
 
-# 配置清华镜像源并安装运行时依赖、supervisor和SSH
 RUN sed -i 's/archive.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
     sed -i 's/security.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
     apt-get update && apt-get install -y --fix-missing \
@@ -14,9 +13,28 @@ RUN sed -i 's/archive.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/source
     curl \
     wget \
     htop \
-    && rm -rf /var/lib/apt/lists/*
+    telnet \
+    netcat-openbsd \
+    iproute2 \
+    dnsutils \
+    coreutils \
+    procps \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
-# 创建必要的目录
+# 下载并安装 OpenTelemetry Collector Contrib
+# 注意：必须使用 otelcol-contrib（不是 otelcol），因为需要 file_storage 等扩展
+# otelcol-contrib 包含所有核心功能 + 社区贡献的扩展（如 file_storage）
+ARG OTELCOL_VERSION=0.139.0
+ARG OTELCOL_ARCH=amd64
+RUN curl -L -o /tmp/otelcol-contrib.tar.gz \
+    "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${OTELCOL_VERSION}/otelcol-contrib_${OTELCOL_VERSION}_linux_${OTELCOL_ARCH}.tar.gz" && \
+    tar -xzf /tmp/otelcol-contrib.tar.gz -C /tmp && \
+    mv /tmp/otelcol-contrib /usr/local/bin/otelcol && \
+    chmod +x /usr/local/bin/otelcol && \
+    rm -f /tmp/otelcol-contrib.tar.gz && \
+    /usr/local/bin/otelcol --version
+
 RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d /var/run/sshd /app/config /app/data
 
 # 配置SSH
@@ -30,12 +48,15 @@ RUN echo 'root:rpingmesh' | chpasswd && \
 
 WORKDIR /app
 
-# 复制Controller二进制文件到不会被覆盖的路径
-COPY controller /usr/local/bin/controller
+# 验证 otelcol 已正确安装
+RUN /usr/local/bin/otelcol --version || (echo "Error: otelcol binary not found or not executable" && exit 1)
 
-# 复制supervisor配置
+# 复制配置文件到系统目录（用于示例配置）
+RUN mkdir -p /usr/local/share
+COPY otel-collector-config.yaml.example /usr/local/share/otel-collector-config.yaml.example
+
 COPY supervisord.conf /etc/supervisor/supervisord.conf
-COPY controller.conf /etc/supervisor/conf.d/controller.conf
+COPY otel-collector.conf /etc/supervisor/conf.d/otel-collector.conf
 
 # 创建SSH启动脚本
 RUN echo '#!/bin/bash' > /etc/init.d/ssh-start && \
@@ -46,13 +67,11 @@ RUN echo '#!/bin/bash' > /etc/init.d/ssh-start && \
     echo 'echo "密码: rpingmesh"' >> /etc/init.d/ssh-start && \
     chmod +x /etc/init.d/ssh-start
 
-# 复制启动脚本到不会被覆盖的路径
 COPY start.sh /usr/local/bin/start.sh
-
-# 设置执行权限
 RUN chmod +x /usr/local/bin/start.sh
 
 # 暴露端口
-EXPOSE 50051 22
+EXPOSE 4317 4318 8889 55679 22
 
 ENTRYPOINT ["/usr/local/bin/start.sh"]
+

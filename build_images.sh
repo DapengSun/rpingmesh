@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 分离式构建脚本 - 构建Checker、Agent、Controller、RQLite独立镜像
+# 分离式构建脚本 - 构建Checker、Agent、Controller、RQLite、OpenTelemetry Collector独立镜像
 set -e
 
 BUILD_ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -51,7 +51,18 @@ echo "=================================================="
 
 echo
 
-# 5. 显示所有镜像
+# 5. 构建OpenTelemetry Collector镜像
+
+echo "5. 构建OpenTelemetry Collector镜像..."
+bash "$BUILD_ROOT"/otel-collector-build/build.sh
+
+echo
+
+echo "=================================================="
+
+echo
+
+# 6. 显示所有镜像
 
 echo "所有构建的镜像:"
 

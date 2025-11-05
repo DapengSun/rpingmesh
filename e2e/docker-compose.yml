@@ -15,7 +15,7 @@ services:
       rpingmesh-network:
         ipv4_address: 172.28.0.10
     volumes:
-      - ${RPINGMESH_DATA_DIR:-./data_dir}/rqlite:/data
+      - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/rqlite:/private/rpingmesh/rqlite
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:4001/status | grep -q '\"ready\":true' || exit 1"]
       interval: 3s
@@ -43,8 +43,8 @@ services:
       rpingmesh-network:
         ipv4_address: 172.28.0.20
     volumes:
-      - ./config/controller.yaml:/app/config/controller.yaml:ro
-      - ${RPINGMESH_DATA_DIR:-./data_dir}/controller:/app/data
+      - ./config/controller.yaml:/private/rpingmesh/controller/config/controller.yaml:ro
+      - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/controller:/private/rpingmesh/controller
     command: --config /app/config/controller.yaml
     restart: unless-stopped
     healthcheck:
@@ -73,9 +73,8 @@ services:
       rpingmesh-network:
         ipv4_address: 172.28.0.30
     volumes:
-      - ./config/analyzer.yaml:/app/config/analyzer.yaml:ro
-      - ${RPINGMESH_DATA_DIR:-./data_dir}/analyzer:/app/data
-    command: --config /app/config/analyzer.yaml
+      - ./config/analyzer.yaml:/private/rpingmesh/analyzer/config/analyzer.yaml:ro
+      - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/analyzer:/private/rpingmesh/analyzer
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "nc", "-zv", "localhost", "50052"]
@@ -83,6 +82,27 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # OpenTelemetry Collector service
+  otel-collector:
+    image: rpingmesh-otel-collector:latest
+    container_name: rpingmesh-otel-collector-e2e
+    ports:
+      - "4317:4317"
+    networks:
+      rpingmesh-network:
+        ipv4_address: 172.28.0.40
+    volumes:
+      - ./config/otel-collector.yaml:/private/rpingmesh/otel-collector/config/otel-collector.yaml:ro
+      - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/otel-collector:/private/rpingmesh/otel-collector
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-zv", "localhost", "4317"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
 #
 #  # Agent service
 #  agent:

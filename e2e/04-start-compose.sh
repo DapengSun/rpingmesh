@@ -51,10 +51,10 @@ if [ ! -d "$DATA_DIR" ]; then
     exit 1
 fi
 
-# Verify component directories exist
+# Verify component directories exist (under rpingmesh subdirectory)
 MISSING_DIRS=()
-for component in "controller" "rqlite" "analyzer"; do
-    if [ ! -d "$DATA_DIR/$component" ]; then
+for component in "controller" "rqlite" "analyzer" "otel-collector"; do
+    if [ ! -d "$DATA_DIR/rpingmesh/$component" ]; then
         MISSING_DIRS+=("$component")
     fi
 done

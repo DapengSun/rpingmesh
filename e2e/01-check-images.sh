@@ -32,6 +32,7 @@ required_images=(
     "rpingmesh-controller:latest"
     "rpingmesh-analyzer:latest"
     "rpingmesh-rqlite:latest"
+    "rpingmesh-otel-collector:latest"
 )
 
 for image in "${required_images[@]}"; do
@@ -52,11 +53,13 @@ if [ $missing_images -gt 0 ]; then
     print_info "    docker load < controller.tar.gz"
     print_info "    docker load < analyzer.tar.gz"
     print_info "    docker load < rqlite.tar.gz"
+    print_info "    docker load < otel-collector.tar.gz"
     print_info ""
     print_info "  To build from source:"
     print_info "    cd ../controller-build && bash build.sh"
     print_info "    cd ../analyzer-build && bash build.sh"
     print_info "    cd ../rqlite-build && bash build.sh"
+    print_info "    cd ../otel-collector-build && bash build.sh"
     exit 1
 fi
 

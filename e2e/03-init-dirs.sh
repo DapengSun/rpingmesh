@@ -30,12 +30,13 @@ if [[ "$DATA_DIR" != /* ]]; then
     DATA_DIR="$(cd "$SCRIPT_DIR" && cd "$(dirname "$DATA_DIR")" && pwd)/$(basename "$DATA_DIR")"
 fi
 
-print_info "Initializing persistent directories under: $DATA_DIR"
+print_info "Initializing persistent directories under: $DATA_DIR/rpingmesh"
 
-# Create directories
-mkdir -p "$DATA_DIR/controller"
-mkdir -p "$DATA_DIR/rqlite"
-mkdir -p "$DATA_DIR/analyzer"
+# Create directories with rpingmesh hierarchy
+mkdir -p "$DATA_DIR/rpingmesh/controller"
+mkdir -p "$DATA_DIR/rpingmesh/rqlite"
+mkdir -p "$DATA_DIR/rpingmesh/analyzer"
+mkdir -p "$DATA_DIR/rpingmesh/otel-collector"
 
 print_info "Directory initialization complete"
 

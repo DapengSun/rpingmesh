@@ -3,17 +3,24 @@ set -e
 
 echo "启动 R-Pingmesh RQLite..."
 
-# 检查数据目录
-if [ ! -d "/data" ]; then
-    echo "创建数据目录..."
-    mkdir -p /data
+# 持久化目录结构
+PERSISTENT_BASE="/private/rpingmesh/rqlite"
+PERSISTENT_DATA_DIR="$PERSISTENT_BASE/data"
+
+# 创建持久化目录
+mkdir -p "$PERSISTENT_DATA_DIR"
+
+# 创建软链接：/data -> /private/rpingmesh/rqlite/data
+if [ -L "/data" ] || [ -e "/data" ]; then
+    rm -rf "/data"
 fi
+ln -sf "$PERSISTENT_DATA_DIR" "/data"
 
 # 设置节点ID
 export NODE_ID=${NODE_ID:-"rqlite-$(hostname)"}
 
 echo "节点ID: $NODE_ID"
-echo "数据目录: /data"
+echo "数据目录: /data -> $PERSISTENT_DATA_DIR"
 echo "HTTP地址: 0.0.0.0:4001"
 echo "Raft地址: 0.0.0.0:4002"
 

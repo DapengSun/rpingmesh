@@ -1,0 +1,63 @@
+# OpenTelemetry Collector 配置示例
+# 复制此文件到配置目录并重命名为 otel-collector-config.yaml
+#
+# 此配置支持：
+# 1. 数据持久化（file_storage extension）- 防止主机掉线时数据丢失
+# 2. Debug 导出 - 用于调试和验证数据接收
+#
+# 注意：如需配置 Prometheus，请取消注释 prometheus exporter 部分
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+  # 可选：添加资源属性
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: "production"
+        action: upsert
+
+# 扩展：启用持久化存储（WAL - Write-Ahead Log）
+# 用于在 Collector 崩溃或重启时保留未发送的数据
+# 注意：如果不需要持久化，可以注释掉整个 extensions 部分
+extensions:
+  file_storage:
+    directory: /app/data/storage
+
+exporters:
+  # 导出到调试日志（用于调试和验证数据接收）
+  debug:
+    verbosity: normal  # 可选值: detailed, normal, basic
+  
+  # Prometheus exporter（已注释，需要时取消注释）
+  # prometheus:
+  #   endpoint: "0.0.0.0:8889"
+  #   const_labels:
+  #     service: "rpingmesh-collector"
+  #   sending_queue:
+  #     enabled: true
+  #     num_consumers: 10
+  #     queue_size: 5000
+  #     storage: file_storage
+
+service:
+  # 注册扩展
+  extensions: [file_storage]
+  
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [debug]
+      # 配置 Prometheus 后，取消注释下面一行，并添加 prometheus 到 exporters
+      # exporters: [debug, prometheus]
+
