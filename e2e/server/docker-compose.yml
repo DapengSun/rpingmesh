@@ -44,7 +44,7 @@ services:
         ipv4_address: 172.28.0.20
     volumes:
       - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/controller:/private/rpingmesh/controller
-      - ./server_config/controller.yaml:/private/rpingmesh/controller/config/controller.yaml
+      - ./server_config/controller.yaml:/mnt/config-source/controller.yaml:ro
     command: --config /app/config/controller.yaml
     restart: unless-stopped
     healthcheck:
@@ -74,7 +74,7 @@ services:
         ipv4_address: 172.28.0.30
     volumes:
       - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/analyzer:/private/rpingmesh/analyzer
-      - ./server_config/analyzer.yaml:/private/rpingmesh/analyzer/config/analyzer.yaml
+      - ./server_config/analyzer.yaml:/mnt/config-source/analyzer.yaml:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "nc", "-zv", "localhost", "50052"]
@@ -108,4 +108,3 @@ networks:
     ipam:
       config:
         - subnet: 172.28.0.0/16
-

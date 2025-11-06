@@ -1,4 +1,5 @@
 #!/bin/bash
+# Use set -e for critical operations, but allow graceful handling of /data directory setup
 set -e
 
 echo "启动 R-Pingmesh RQLite..."
@@ -10,11 +11,26 @@ PERSISTENT_DATA_DIR="$PERSISTENT_BASE/data"
 # 创建持久化目录
 mkdir -p "$PERSISTENT_DATA_DIR"
 
-# 创建软链接：/data -> /private/rpingmesh/rqlite/data
-if [ -L "/data" ] || [ -e "/data" ]; then
-    rm -rf "/data"
+# 设置 /data 目录：如果是挂载点则直接使用，否则创建软链接
+if mountpoint -q "/data" 2>/dev/null; then
+    # 挂载点存在，直接使用
+    PERSISTENT_DATA_DIR="/data"
+    echo "信息: /data 是挂载点，直接使用"
+else
+    # 不是挂载点，尝试创建软链接
+    if [ -e "/data" ] && [ ! -L "/data" ]; then
+        # 如果存在且不是软链接，尝试删除（忽略错误）
+        rm -rf "/data" 2>/dev/null || true
+    fi
+    # 创建软链接，失败则使用 /data 目录
+    if ln -sf "$PERSISTENT_DATA_DIR" "/data" 2>/dev/null; then
+        echo "信息: 已创建软链接 /data -> $PERSISTENT_DATA_DIR"
+    else
+        PERSISTENT_DATA_DIR="/data"
+        mkdir -p "$PERSISTENT_DATA_DIR"
+        echo "警告: 无法创建软链接，直接使用 /data 目录"
+    fi
 fi
-ln -sf "$PERSISTENT_DATA_DIR" "/data"
 
 # 设置节点ID
 export NODE_ID=${NODE_ID:-"rqlite-$(hostname)"}

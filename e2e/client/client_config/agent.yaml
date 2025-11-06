@@ -1,7 +1,7 @@
 agent-id: ""
 
-controller-addr: "127.0.0.1:50051"
-analyzer-addr: "127.0.0.1:50052"
+controller-addr: "58.206.206.38:50051"
+analyzer-addr: "58.206.206.38:50052"
 analyzer-enabled: true
 
 log-level: "info"
@@ -19,7 +19,7 @@ tracer-enabled: false
 ebpf-enabled: true
 service-flow-monitor-enabled: false
 
-otel-collector-addr: "grpc://127.0.0.1:4317"
+otel-collector-addr: "grpc://58.206.206.38:4317"
 metrics-enabled: true
 
 allowed-device-names: []

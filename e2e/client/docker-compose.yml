@@ -3,6 +3,7 @@ services:
     image: rpingmesh-agent:latest
     container_name: rpingmesh-agent-client
     privileged: true
+    network_mode: host
     environment:
       # Optional: Environment variables can override config file values
       # If not set, values from agent.yaml will be used
@@ -12,6 +13,6 @@ services:
       # Note: All other configuration should be set in agent.yaml file
     volumes:
       - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/agent:/private/rpingmesh/agent
-      - ./client_config/agent.yaml:/private/rpingmesh/agent/config/agent.yaml
+      - ./client_config/agent.yaml:/mnt/config-source/agent.yaml:ro
     restart: unless-stopped
 

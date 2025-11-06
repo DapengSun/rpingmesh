@@ -32,7 +32,9 @@ RUN echo 'root:rpingmesh' | chpasswd && \
     echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config && \
     echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config
 
-WORKDIR /data
+# Note: WORKDIR is not set to /data here to avoid conflicts with volume mounts
+# The start.sh script will handle /data directory setup
+WORKDIR /root
 
 COPY supervisord.conf /etc/supervisor/supervisord.conf
 COPY rqlite.conf /etc/supervisor/conf.d/rqlite.conf

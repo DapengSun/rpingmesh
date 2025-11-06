@@ -74,20 +74,4 @@ echo "=================================================="
 
 echo
 
-# 7. 保存所有镜像
-
-echo "7. 保存所有镜像..."
-
-IMAGES_DIR="$BUILD_ROOT/images"
-
-mkdir -p "$IMAGES_DIR"
-
-bash "$BUILD_ROOT/save_images.sh" "$IMAGES_DIR"
-
-echo
-
-echo "=================================================="
-
-echo
-
 echo "分离式构建完成！"

@@ -21,6 +21,35 @@ PERSISTENT_CONFIG_DIR="$PERSISTENT_BASE/config"
 # 创建持久化目录
 mkdir -p "$PERSISTENT_DATA_DIR" "$PERSISTENT_CONFIG_DIR"
 
+# 检查配置文件是否已挂载（通过 bind mount）
+CONFIG_FILE_TARGET="$PERSISTENT_CONFIG_DIR/agent.yaml"
+CONFIG_SOURCE="/mnt/config-source/agent.yaml"
+
+# 如果配置文件源存在（通过 bind mount 挂载），则复制到持久化目录（仅当目标文件不存在时）
+if [ -f "$CONFIG_SOURCE" ] && [ -s "$CONFIG_SOURCE" ]; then
+    echo "信息: 检测到配置文件源: $CONFIG_SOURCE"
+    if [ ! -f "$CONFIG_FILE_TARGET" ]; then
+        # 目标文件不存在，复制配置文件到持久化目录
+        cp "$CONFIG_SOURCE" "$CONFIG_FILE_TARGET"
+        echo "信息: 已将配置文件复制到持久化目录: $CONFIG_FILE_TARGET"
+    else
+        # 目标文件已存在，不覆盖
+        echo "信息: 配置文件已存在，跳过复制: $CONFIG_FILE_TARGET"
+        if [ ! -s "$CONFIG_FILE_TARGET" ]; then
+            echo "警告: 配置文件存在但为空: $CONFIG_FILE_TARGET"
+            echo "请检查配置文件是否正确"
+        fi
+    fi
+elif [ -f "$CONFIG_FILE_TARGET" ]; then
+    # 如果持久化目录中已有配置文件，检查是否有内容
+    if [ -s "$CONFIG_FILE_TARGET" ]; then
+        echo "信息: 使用持久化目录中的配置文件: $CONFIG_FILE_TARGET"
+    else
+        echo "警告: 配置文件存在但为空: $CONFIG_FILE_TARGET"
+        echo "请检查配置文件是否正确"
+    fi
+fi
+
 # 创建软链接：/app/data -> /private/rpingmesh/agent/data
 if [ -L "/app/data" ] || [ -e "/app/data" ]; then
     rm -rf "/app/data"
@@ -68,23 +97,98 @@ echo "--- Network Connectivity Tests ---"
 # Try to read from config file first
 if [ -f "$CONFIG_FILE" ]; then
     # Try to extract controller-addr from config file (supports both kebab-case and snake_case)
-    CONFIG_CONTROLLER_ADDR=$(grep -E "^\s*(controller-addr|controller_addr):" "$CONFIG_FILE" | head -1 | sed 's/.*:\s*"*\([^"]*\)"*/\1/' | tr -d ' ')
-    CONFIG_ANALYZER_ADDR=$(grep -E "^\s*(analyzer-addr|analyzer_addr):" "$CONFIG_FILE" | head -1 | sed 's/.*:\s*"*\([^"]*\)"*/\1/' | tr -d ' ')
-    CONFIG_ANALYZER_ENABLED=$(grep -E "^\s*(analyzer-enabled|analyzer_enabled):" "$CONFIG_FILE" | head -1 | sed 's/.*:\s*\(.*\)/\1/' | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+    # Fix: Use non-greedy pattern to match only the key-value separator, not colons in the value
+    # Pattern: match key (non-colon chars), then colon, then optional spaces, then quoted or unquoted value
+    CONFIG_CONTROLLER_ADDR=$(grep -E "^\s*(controller-addr|controller_addr):" "$CONFIG_FILE" | head -1 | sed -E 's/^[[:space:]]*[^:]+[[:space:]]*:[[:space:]]*"?([^"]+)"?[[:space:]]*$/\1/' | tr -d ' ')
+    CONFIG_ANALYZER_ADDR=$(grep -E "^\s*(analyzer-addr|analyzer_addr):" "$CONFIG_FILE" | head -1 | sed -E 's/^[[:space:]]*[^:]+[[:space:]]*:[[:space:]]*"?([^"]+)"?[[:space:]]*$/\1/' | tr -d ' ')
+    CONFIG_ANALYZER_ENABLED=$(grep -E "^\s*(analyzer-enabled|analyzer_enabled):" "$CONFIG_FILE" | head -1 | sed -E 's/^[[:space:]]*[^:]+[[:space:]]*:[[:space:]]*"?([^"]+)"?[[:space:]]*$/\1/' | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+    # Extract otel-collector-addr (format: grpc://host:port or http://host:port)
+    CONFIG_OTEL_COLLECTOR_ADDR=$(grep -E "^\s*(otel-collector-addr|otel_collector_addr):" "$CONFIG_FILE" | head -1 | sed -E 's/^[[:space:]]*[^:]+[[:space:]]*:[[:space:]]*"?([^"]+)"?[[:space:]]*$/\1/' | tr -d ' ')
+    # Extract metrics-enabled
+    CONFIG_METRICS_ENABLED=$(grep -E "^\s*(metrics-enabled|metrics_enabled):" "$CONFIG_FILE" | head -1 | sed -E 's/^[[:space:]]*[^:]+[[:space:]]*:[[:space:]]*"?([^"]+)"?[[:space:]]*$/\1/' | tr -d ' ' | tr '[:upper:]' '[:lower:]')
 fi
 
 # Priority: environment variable > config file > default
 CONTROLLER_ADDR="${RPINGMESH_CONTROLLER_ADDR:-${CONFIG_CONTROLLER_ADDR:-controller:50051}}"
 ANALYZER_ADDR="${RPINGMESH_ANALYZER_ADDR:-${CONFIG_ANALYZER_ADDR:-localhost:50052}}"
+OTEL_COLLECTOR_ADDR="${RPINGMESH_OTEL_COLLECTOR_ADDR:-${CONFIG_OTEL_COLLECTOR_ADDR:-grpc://localhost:4317}}"
 
-# Try to extract host and port
-CONTROLLER_HOST=$(echo "$CONTROLLER_ADDR" | cut -d':' -f1)
-CONTROLLER_PORT=$(echo "$CONTROLLER_ADDR" | cut -d':' -f2)
-ANALYZER_HOST=$(echo "$ANALYZER_ADDR" | cut -d':' -f1)
-ANALYZER_PORT=$(echo "$ANALYZER_ADDR" | cut -d':' -f2)
+# Function to parse address and extract host and port
+# If address doesn't contain ':', treat it as port only and use default host
+# Also handles :port format (empty host means use default)
+# Supports IPv6 addresses in brackets (e.g., [::1]:50051)
+# Supports protocol prefix (e.g., grpc://host:port, http://host:port)
+parse_address() {
+    local addr=$1
+    local default_host=$2
+    local host
+    local port
+    
+    # Remove protocol prefix if present (grpc://, http://, https://)
+    addr=$(echo "$addr" | sed -E 's|^[a-zA-Z]+://||')
+    
+    # Handle IPv6 addresses in brackets (e.g., [::1]:50051)
+    if [[ "$addr" == \[*\]:* ]]; then
+        # Extract IPv6 address and port
+        host=$(echo "$addr" | sed 's/^\[\([^]]*\)\]:.*$/\1/')
+        port=$(echo "$addr" | sed 's/^\[[^]]*\]:\(.*\)$/\1/')
+    elif [[ "$addr" == *:* ]]; then
+        # Regular IPv4 or hostname:port format
+        host=$(echo "$addr" | cut -d':' -f1)
+        port=$(echo "$addr" | cut -d':' -f2-)
+        # If host is empty (e.g., :50051), use default host
+        if [ -z "$host" ]; then
+            host="$default_host"
+        fi
+    else
+        # No colon found, treat as port only
+        host="$default_host"
+        port="$addr"
+    fi
+    
+    # Validate that we have both host and port
+    if [ -z "$host" ] || [ -z "$port" ]; then
+        echo "ERROR: Invalid address format: $addr (expected format: host:port or :port)" >&2
+        return 1
+    fi
+    
+    echo "$host|$port"
+}
+
+# Parse addresses
+CONTROLLER_PARSED=$(parse_address "$CONTROLLER_ADDR" "controller")
+if [ $? -ne 0 ]; then
+    echo "Failed to parse Controller address: $CONTROLLER_ADDR" >&2
+    exit 1
+fi
+CONTROLLER_HOST=$(echo "$CONTROLLER_PARSED" | cut -d'|' -f1)
+CONTROLLER_PORT=$(echo "$CONTROLLER_PARSED" | cut -d'|' -f2)
+
+ANALYZER_PARSED=$(parse_address "$ANALYZER_ADDR" "localhost")
+if [ $? -ne 0 ]; then
+    echo "Failed to parse Analyzer address: $ANALYZER_ADDR" >&2
+    exit 1
+fi
+ANALYZER_HOST=$(echo "$ANALYZER_PARSED" | cut -d'|' -f1)
+ANALYZER_PORT=$(echo "$ANALYZER_PARSED" | cut -d'|' -f2)
+
+# Parse otel-collector address (format: grpc://host:port or http://host:port)
+OTEL_COLLECTOR_PARSED=$(parse_address "$OTEL_COLLECTOR_ADDR" "localhost")
+if [ $? -ne 0 ]; then
+    echo "Failed to parse Otel-Collector address: $OTEL_COLLECTOR_ADDR" >&2
+    # Don't exit, just skip otel-collector test
+    OTEL_COLLECTOR_HOST=""
+    OTEL_COLLECTOR_PORT=""
+else
+    OTEL_COLLECTOR_HOST=$(echo "$OTEL_COLLECTOR_PARSED" | cut -d'|' -f1)
+    OTEL_COLLECTOR_PORT=$(echo "$OTEL_COLLECTOR_PARSED" | cut -d'|' -f2)
+fi
 
 echo "Controller: $CONTROLLER_ADDR (host: $CONTROLLER_HOST, port: $CONTROLLER_PORT)"
 echo "Analyzer: $ANALYZER_ADDR (host: $ANALYZER_HOST, port: $ANALYZER_PORT)"
+if [ -n "$OTEL_COLLECTOR_HOST" ] && [ -n "$OTEL_COLLECTOR_PORT" ]; then
+    echo "Otel-Collector: $OTEL_COLLECTOR_ADDR (host: $OTEL_COLLECTOR_HOST, port: $OTEL_COLLECTOR_PORT)"
+fi
 echo
 
 # Function to test connectivity with multiple methods
@@ -162,24 +266,32 @@ test_connectivity() {
     fi
     echo
     
-    # Test 5: gRPC specific test (using curl if available)
+    # Test 5: gRPC specific test (only for otel-collector, using grpcurl if available)
     echo "5. gRPC endpoint test..."
-    if command -v curl >/dev/null 2>&1; then
-        # Try HTTP/2 connection (gRPC uses HTTP/2)
-        if timeout 3 curl -sSf --http2 "http://$host:$port" >/dev/null 2>&1; then
-            echo "   ✓ HTTP/2 connection successful (gRPC compatible)"
-            success=true
-        else
-            # Fallback to HTTP/1.1
-            if timeout 3 curl -sSf "http://$host:$port" >/dev/null 2>&1; then
-                echo "   ⚠ HTTP connection successful but may not be gRPC"
+    # Only test gRPC for otel-collector, skip for Controller and Analyzer
+    if [ "$name" = "Otel-Collector" ]; then
+        if command -v grpcurl >/dev/null 2>&1; then
+            # Try to list services using grpcurl (tests gRPC connection)
+            # Use plaintext mode since we're using insecure connections
+            if timeout 5 grpcurl -plaintext "$host:$port" list >/dev/null 2>&1; then
+                echo "   ✓ gRPC connection successful"
+                # Try to get more details about available services
+                SERVICES=$(timeout 5 grpcurl -plaintext "$host:$port" list 2>/dev/null || echo "")
+                if [ -n "$SERVICES" ]; then
+                    echo "   Available services:"
+                    echo "$SERVICES" | sed 's/^/     - /'
+                fi
+                success=true
             else
-                echo "   ✗ HTTP connection failed"
-                echo "   Note: This is expected for gRPC endpoints - gRPC requires proper handshake"
+                echo "   ✗ gRPC connection failed"
+                echo "   Note: Service may not support gRPC reflection or endpoint may be unreachable"
             fi
+        else
+            echo "   (grpcurl not available)"
+            echo "   Note: Cannot test gRPC connection without grpcurl"
         fi
     else
-        echo "   (curl not available)"
+        echo "   (Skipped: gRPC test only applies to Otel-Collector)"
     fi
     echo
     
@@ -212,6 +324,24 @@ else
     echo "=== Analyzer Connectivity Test ==="
     echo "Skipped: Analyzer is not enabled"
     echo "(Set analyzer-enabled: true in config file or RPINGMESH_ANALYZER_ENABLED=true to enable)"
+    echo
+fi
+
+# Test Otel-Collector connectivity (only if metrics are enabled and address is configured)
+METRICS_ENABLED_FINAL="${RPINGMESH_METRICS_ENABLED:-${CONFIG_METRICS_ENABLED:-true}}"
+if [ "$METRICS_ENABLED_FINAL" = "true" ] || [ "$METRICS_ENABLED_FINAL" = "True" ] || [ "$METRICS_ENABLED_FINAL" = "1" ]; then
+    if [ -n "$OTEL_COLLECTOR_HOST" ] && [ -n "$OTEL_COLLECTOR_PORT" ]; then
+        test_connectivity "Otel-Collector" "$OTEL_COLLECTOR_HOST" "$OTEL_COLLECTOR_PORT"
+    else
+        echo "=== Otel-Collector Connectivity Test ==="
+        echo "Skipped: Otel-Collector address not configured"
+        echo "(Set otel-collector-addr in config file to enable)"
+        echo
+    fi
+else
+    echo "=== Otel-Collector Connectivity Test ==="
+    echo "Skipped: Metrics are not enabled"
+    echo "(Set metrics-enabled: true in config file or RPINGMESH_METRICS_ENABLED=true to enable)"
     echo
 fi
 

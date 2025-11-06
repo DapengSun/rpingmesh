@@ -11,9 +11,36 @@ PERSISTENT_CONFIG_DIR="$PERSISTENT_BASE/config"
 # 创建持久化目录
 mkdir -p "$PERSISTENT_DATA_DIR" "$PERSISTENT_CONFIG_DIR"
 
-if [ ! -f "$PERSISTENT_CONFIG_DIR/analyzer.yaml" ]; then
-    echo "错误: 配置文件 $PERSISTENT_CONFIG_DIR/analyzer.yaml 不存在"
-    echo "请确保配置文件已正确挂载到容器中"
+# 检查配置文件是否已挂载（通过 bind mount）
+CONFIG_FILE="$PERSISTENT_CONFIG_DIR/analyzer.yaml"
+CONFIG_SOURCE="/mnt/config-source/analyzer.yaml"
+
+# 如果配置文件源存在（通过 bind mount 挂载），则复制到持久化目录（仅当目标文件不存在时）
+if [ -f "$CONFIG_SOURCE" ] && [ -s "$CONFIG_SOURCE" ]; then
+    echo "信息: 检测到配置文件源: $CONFIG_SOURCE"
+    if [ ! -f "$CONFIG_FILE" ]; then
+        # 目标文件不存在，复制配置文件到持久化目录
+        cp "$CONFIG_SOURCE" "$CONFIG_FILE"
+        echo "信息: 已将配置文件复制到持久化目录: $CONFIG_FILE"
+    else
+        # 目标文件已存在，不覆盖
+        echo "信息: 配置文件已存在，跳过复制: $CONFIG_FILE"
+        if [ ! -s "$CONFIG_FILE" ]; then
+            echo "警告: 配置文件存在但为空: $CONFIG_FILE"
+            echo "请检查配置文件是否正确"
+        fi
+    fi
+elif [ -f "$CONFIG_FILE" ]; then
+    # 如果持久化目录中已有配置文件，检查是否有内容
+    if [ -s "$CONFIG_FILE" ]; then
+        echo "信息: 使用持久化目录中的配置文件: $CONFIG_FILE"
+    else
+        echo "警告: 配置文件存在但为空: $CONFIG_FILE"
+        echo "请检查配置文件是否正确"
+    fi
+else
+    echo "错误: 配置文件不存在: $CONFIG_FILE"
+    echo "请确保配置文件已正确挂载或复制到容器中"
     echo "检查挂载点: $PERSISTENT_CONFIG_DIR"
     ls -la "$PERSISTENT_CONFIG_DIR" 2>&1 || echo "目录不存在"
     exit 1

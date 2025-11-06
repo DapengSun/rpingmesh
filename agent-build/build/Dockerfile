@@ -21,8 +21,19 @@ RUN sed -i 's/archive.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/source
     dnsutils \
     coreutils \
     procps \
+    unzip \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+# Install grpcurl for gRPC testing
+RUN GRPCURL_VERSION="1.8.9" && \
+    GRPCURL_ARCH="linux_x86_64" && \
+    wget -q "https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_${GRPCURL_ARCH}.tar.gz" -O /tmp/grpcurl.tar.gz && \
+    tar -xzf /tmp/grpcurl.tar.gz -C /tmp && \
+    mv /tmp/grpcurl /usr/local/bin/grpcurl && \
+    chmod +x /usr/local/bin/grpcurl && \
+    rm -rf /tmp/grpcurl* && \
+    grpcurl --version
 
 # Verify critical tools are installed and available
 RUN command -v nc >/dev/null && \
@@ -31,7 +42,8 @@ RUN command -v nc >/dev/null && \
     command -v ping >/dev/null && \
     command -v curl >/dev/null && \
     command -v timeout >/dev/null && \
-    command -v bash >/dev/null
+    command -v bash >/dev/null && \
+    command -v grpcurl >/dev/null
 
 RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d /var/run/sshd /app/config /app/data
 
