@@ -11,6 +11,12 @@
 
 ## 前置准备
 
+### 拉取代码
+```bash
+git clone -b refactor/build-deploy git@github.com:DapengSun/rpingmesh.git
+```
+
+
 ### 镜像构建（在线环境）
 
 如果部署环境可以访问 Docker Hub，可以直接构建镜像：
@@ -112,7 +118,7 @@ cp env.example .env
 
 ### 步骤 3: 配置 Agent
 
-编辑 `config/agent.yaml` 文件，修改以下**必需**的配置项：
+编辑 `client_config/agent.yaml` 文件，修改以下**必需**的配置项：
 
 ```yaml
 controller-addr: "127.0.0.1:50051"          # Controller gRPC 地址，将 IP 改为服务端 IP

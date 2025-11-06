@@ -8,6 +8,7 @@ AGENT_IMAGE="rpingmesh-agent:latest"
 CONTROLLER_IMAGE="rpingmesh-controller:latest"
 RQLITE_IMAGE="rpingmesh-rqlite:latest"
 ANALYZER_IMAGE="rpingmesh-analyzer:latest"
+OTEL_COLLECTOR_IMAGE="rpingmesh-otel-collector:latest"
 
 usage() {
 	echo "用法: $0 <输出目录>"
@@ -40,9 +41,10 @@ save_one() {
 	fi
 }
 
-save_one "$AGENT_IMAGE"     "$OUT_DIR/agent.tar.gz"
-save_one "$CONTROLLER_IMAGE" "$OUT_DIR/controller.tar.gz"
-save_one "$RQLITE_IMAGE"    "$OUT_DIR/rqlite.tar.gz"
-save_one "$ANALYZER_IMAGE"  "$OUT_DIR/analyzer.tar.gz"
+save_one "$AGENT_IMAGE"          "$OUT_DIR/agent.tar.gz"
+save_one "$CONTROLLER_IMAGE"     "$OUT_DIR/controller.tar.gz"
+save_one "$RQLITE_IMAGE"         "$OUT_DIR/rqlite.tar.gz"
+save_one "$ANALYZER_IMAGE"       "$OUT_DIR/analyzer.tar.gz"
+save_one "$OTEL_COLLECTOR_IMAGE" "$OUT_DIR/otel-collector.tar.gz"
 
 echo "镜像保存完成。"

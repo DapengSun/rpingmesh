@@ -1,0 +1,26 @@
+agent-id: ""
+
+controller-addr: "127.0.0.1:50051"
+analyzer-addr: "127.0.0.1:50052"
+analyzer-enabled: true
+
+log-level: "info"
+
+probe-interval-ms: 1000
+target-probe-rate-per-second: 10
+pinglist-update-interval-sec: 30
+
+data-upload-interval-ms: 10000
+
+traceroute-interval-ms: 0
+traceroute-on-timeout: false
+tracer-enabled: false
+
+ebpf-enabled: true
+service-flow-monitor-enabled: false
+
+otel-collector-addr: "grpc://127.0.0.1:4317"
+metrics-enabled: true
+
+allowed-device-names: []
+gid-index: 0

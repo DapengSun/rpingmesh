@@ -12,6 +12,6 @@ services:
       # Note: All other configuration should be set in agent.yaml file
     volumes:
       - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/agent:/private/rpingmesh/agent
-      - ./config/agent.yaml:/private/rpingmesh/agent/config/agent.yaml:ro
+      - ./client_config/agent.yaml:/private/rpingmesh/agent/config/agent.yaml
     restart: unless-stopped
 
