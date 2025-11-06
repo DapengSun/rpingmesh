@@ -11,6 +11,14 @@ PERSISTENT_CONFIG_DIR="$PERSISTENT_BASE/config"
 # 创建持久化目录
 mkdir -p "$PERSISTENT_DATA_DIR" "$PERSISTENT_CONFIG_DIR"
 
+if [ ! -f "$PERSISTENT_CONFIG_DIR/analyzer.yaml" ]; then
+    echo "错误: 配置文件 $PERSISTENT_CONFIG_DIR/analyzer.yaml 不存在"
+    echo "请确保配置文件已正确挂载到容器中"
+    echo "检查挂载点: $PERSISTENT_CONFIG_DIR"
+    ls -la "$PERSISTENT_CONFIG_DIR" 2>&1 || echo "目录不存在"
+    exit 1
+fi
+
 # 创建软链接：/app/data -> /private/rpingmesh/analyzer/data
 if [ -L "/app/data" ] || [ -e "/app/data" ]; then
     rm -rf "/app/data"

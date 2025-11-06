@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Script 6: Clean up containers and persistent data directories
+# Script 6: Clean up client-side agent containers and persistent data directories
 # Stops containers and clears persistent directories
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,14 +41,12 @@ docker compose down
 print_info "Clearing persistent data directories..."
 
 if [ -d "$DATA_DIR" ]; then
-    for component in controller rqlite analyzer; do
-        component_dir="$DATA_DIR/$component"
-        if [ -d "$component_dir" ]; then
-            print_info "Clearing $component_dir..."
-            rm -rf "$component_dir"/*
-            print_info "  ✓ Cleared $component"
-        fi
-    done
+    agent_dir="$DATA_DIR/rpingmesh/agent"
+    if [ -d "$agent_dir" ]; then
+        print_info "Clearing $agent_dir..."
+        rm -rf "$agent_dir"/*
+        print_info "  ✓ Cleared agent"
+    fi
     print_info "All persistent data cleared"
 else
     print_warn "Data directory not found: $DATA_DIR"

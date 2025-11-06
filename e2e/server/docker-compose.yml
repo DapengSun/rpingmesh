@@ -2,7 +2,7 @@ services:
   # RQLite database - used by Controller for RNIC registry storage
   rqlite:
     image: rpingmesh-rqlite:latest
-    container_name: rpingmesh-rqlite-e2e
+    container_name: rpingmesh-rqlite-server
     ports:
       - "4001:4001"
       - "4002:4002"
@@ -27,7 +27,7 @@ services:
   # Controller service
   controller:
     image: rpingmesh-controller:latest
-    container_name: rpingmesh-controller-e2e
+    container_name: rpingmesh-controller-server
     depends_on:
       rqlite:
         condition: service_healthy
@@ -43,8 +43,8 @@ services:
       rpingmesh-network:
         ipv4_address: 172.28.0.20
     volumes:
-      - ./config/controller.yaml:/private/rpingmesh/controller/config/controller.yaml:ro
       - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/controller:/private/rpingmesh/controller
+      - ./config/controller.yaml:/private/rpingmesh/controller/config/controller.yaml:ro
     command: --config /app/config/controller.yaml
     restart: unless-stopped
     healthcheck:
@@ -57,7 +57,7 @@ services:
   # Analyzer service
   analyzer:
     image: rpingmesh-analyzer:latest
-    container_name: rpingmesh-analyzer-e2e
+    container_name: rpingmesh-analyzer-server
     depends_on:
       rqlite:
         condition: service_healthy
@@ -73,8 +73,8 @@ services:
       rpingmesh-network:
         ipv4_address: 172.28.0.30
     volumes:
-      - ./config/analyzer.yaml:/private/rpingmesh/analyzer/config/analyzer.yaml:ro
       - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/analyzer:/private/rpingmesh/analyzer
+      - ./config/analyzer.yaml:/private/rpingmesh/analyzer/config/analyzer.yaml:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "nc", "-zv", "localhost", "50052"]
@@ -86,14 +86,13 @@ services:
   # OpenTelemetry Collector service
   otel-collector:
     image: rpingmesh-otel-collector:latest
-    container_name: rpingmesh-otel-collector-e2e
+    container_name: rpingmesh-otel-collector-server
     ports:
       - "4317:4317"
     networks:
       rpingmesh-network:
         ipv4_address: 172.28.0.40
     volumes:
-      - ./config/otel-collector.yaml:/private/rpingmesh/otel-collector/config/otel-collector.yaml:ro
       - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/otel-collector:/private/rpingmesh/otel-collector
     restart: unless-stopped
     healthcheck:
@@ -102,32 +101,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-
-#
-#  # Agent service
-#  agent:
-#    image: rpingmesh-agent:latest
-#    container_name: rpingmesh-agent-e2e
-#    privileged: true
-#    depends_on:
-#      controller:
-#        condition: service_healthy
-#      analyzer:
-#        condition: service_healthy
-#    environment:
-#      - RPINGMESH_AGENT_DIR_PATH=/app
-#      - RPINGMESH_CONTROLLER_ADDR=controller:50051
-#      - RPINGMESH_ANALYZER_ADDR=analyzer:50052
-#      - RPINGMESH_ANALYZER_ENABLED=true
-#      - RPINGMESH_METRICS_ENABLED=false
-#      - RPINGMESH_AGENT_LOG_LEVEL=info
-#      - RPINGMESH_AGENT_PROBE_INTERVAL_MS=1000
-#      - RPINGMESH_AGENT_PINGLIST_UPDATE_INTERVAL_SEC=30
-#    networks:
-#      - rpingmesh-network
-#    volumes:
-#      - ./config/agent.yaml:/app/config/agent.yaml:ro
-#    restart: unless-stopped
 
 networks:
   rpingmesh-network:

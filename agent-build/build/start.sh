@@ -6,21 +6,49 @@ RPINGMESH_AGENT_DIR_PATH="${RPINGMESH_AGENT_DIR_PATH:-/app}"
 CONFIG_FILE="${RPINGMESH_AGENT_DIR_PATH}/config/agent.yaml"
 
 echo "=========================================="
-echo "R-Pingmesh Agent Startup Debug Info"
+echo "R-Pingmesh Agent Startup"
 echo "=========================================="
 echo "Timestamp: $(date -Iseconds)"
 echo
 
-echo "--- Environment Variables ---"
+echo "启动 R-Pingmesh Agent..."
+
+# 持久化目录结构
+PERSISTENT_BASE="/private/rpingmesh/agent"
+PERSISTENT_DATA_DIR="$PERSISTENT_BASE/data"
+PERSISTENT_CONFIG_DIR="$PERSISTENT_BASE/config"
+
+# 创建持久化目录
+mkdir -p "$PERSISTENT_DATA_DIR" "$PERSISTENT_CONFIG_DIR"
+
+# 创建软链接：/app/data -> /private/rpingmesh/agent/data
+if [ -L "/app/data" ] || [ -e "/app/data" ]; then
+    rm -rf "/app/data"
+fi
+ln -sf "$PERSISTENT_DATA_DIR" "/app/data"
+
+# 创建软链接：/app/config -> /private/rpingmesh/agent/config
+if [ -L "/app/config" ] || [ -e "/app/config" ]; then
+    rm -rf "/app/config"
+fi
+ln -sf "$PERSISTENT_CONFIG_DIR" "/app/config"
+
+echo "--- Configuration Source ---"
 echo "RPINGMESH_AGENT_DIR_PATH=${RPINGMESH_AGENT_DIR_PATH}"
-echo "RPINGMESH_CONTROLLER_ADDR=${RPINGMESH_CONTROLLER_ADDR:-<not set>}"
-echo "RPINGMESH_ANALYZER_ADDR=${RPINGMESH_ANALYZER_ADDR:-<not set>}"
-echo "RPINGMESH_ANALYZER_ENABLED=${RPINGMESH_ANALYZER_ENABLED:-<not set>}"
+echo "Config File: ${CONFIG_FILE}"
+echo ""
+echo "Note: Configuration is loaded from agent.yaml file."
+echo "Environment variables (RPINGMESH_*) can optionally override config values."
+echo "Environment variables set:"
+echo "  RPINGMESH_CONTROLLER_ADDR=${RPINGMESH_CONTROLLER_ADDR:-<not set, will use config>}"
+echo "  RPINGMESH_ANALYZER_ADDR=${RPINGMESH_ANALYZER_ADDR:-<not set, will use config>}"
+echo "  RPINGMESH_ANALYZER_ENABLED=${RPINGMESH_ANALYZER_ENABLED:-<not set, will use config>}"
 echo
 
-echo "--- Configuration File Check ---"
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "ERROR: Configuration file $CONFIG_FILE does not exist"
+# 检查配置文件 - 和 controller 一样，如果不存在则抛出错误
+if [ ! -f "/app/config/agent.yaml" ]; then
+    echo "错误: 配置文件 /app/config/agent.yaml 不存在"
+    echo "请确保配置文件已正确挂载到容器中"
     echo "RPINGMESH_AGENT_DIR_PATH=${RPINGMESH_AGENT_DIR_PATH}"
     if [ -d "$RPINGMESH_AGENT_DIR_PATH" ]; then
         echo "Directory contents:"
@@ -30,15 +58,24 @@ if [ ! -f "$CONFIG_FILE" ]; then
     fi
     exit 1
 fi
-echo "Configuration file found: $CONFIG_FILE"
+echo "配置文件检查通过: $CONFIG_FILE"
 echo "Configuration file contents:"
 cat "$CONFIG_FILE"
 echo
 
 echo "--- Network Connectivity Tests ---"
-# Extract addresses from config or environment
-CONTROLLER_ADDR="${RPINGMESH_CONTROLLER_ADDR:-controller:50051}"
-ANALYZER_ADDR="${RPINGMESH_ANALYZER_ADDR:-localhost:50052}"
+# Extract addresses from config file (with fallback to environment or defaults)
+# Try to read from config file first
+if [ -f "$CONFIG_FILE" ]; then
+    # Try to extract controller-addr from config file (supports both kebab-case and snake_case)
+    CONFIG_CONTROLLER_ADDR=$(grep -E "^\s*(controller-addr|controller_addr):" "$CONFIG_FILE" | head -1 | sed 's/.*:\s*"*\([^"]*\)"*/\1/' | tr -d ' ')
+    CONFIG_ANALYZER_ADDR=$(grep -E "^\s*(analyzer-addr|analyzer_addr):" "$CONFIG_FILE" | head -1 | sed 's/.*:\s*"*\([^"]*\)"*/\1/' | tr -d ' ')
+    CONFIG_ANALYZER_ENABLED=$(grep -E "^\s*(analyzer-enabled|analyzer_enabled):" "$CONFIG_FILE" | head -1 | sed 's/.*:\s*\(.*\)/\1/' | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+fi
+
+# Priority: environment variable > config file > default
+CONTROLLER_ADDR="${RPINGMESH_CONTROLLER_ADDR:-${CONFIG_CONTROLLER_ADDR:-controller:50051}}"
+ANALYZER_ADDR="${RPINGMESH_ANALYZER_ADDR:-${CONFIG_ANALYZER_ADDR:-localhost:50052}}"
 
 # Try to extract host and port
 CONTROLLER_HOST=$(echo "$CONTROLLER_ADDR" | cut -d':' -f1)
@@ -167,31 +204,29 @@ test_connectivity() {
 # Test Controller connectivity
 test_connectivity "Controller" "$CONTROLLER_HOST" "$CONTROLLER_PORT"
 
-# Test Analyzer connectivity (if enabled)
-if [ "${RPINGMESH_ANALYZER_ENABLED:-false}" = "true" ] || [ -n "$RPINGMESH_ANALYZER_ADDR" ]; then
+# Determine if analyzer is enabled (priority: env > config > default)
+ANALYZER_ENABLED_FINAL="${RPINGMESH_ANALYZER_ENABLED:-${CONFIG_ANALYZER_ENABLED:-false}}"
+if [ "$ANALYZER_ENABLED_FINAL" = "true" ] || [ "$ANALYZER_ENABLED_FINAL" = "True" ] || [ "$ANALYZER_ENABLED_FINAL" = "1" ]; then
     test_connectivity "Analyzer" "$ANALYZER_HOST" "$ANALYZER_PORT"
 else
     echo "=== Analyzer Connectivity Test ==="
     echo "Skipped: Analyzer is not enabled"
-    echo "(Set RPINGMESH_ANALYZER_ENABLED=true to enable)"
+    echo "(Set analyzer-enabled: true in config file or RPINGMESH_ANALYZER_ENABLED=true to enable)"
     echo
 fi
 
-echo "--- Analyzer Configuration Check ---"
-# Check if analyzer-enabled is in config
-if grep -q "analyzer-enabled" "$CONFIG_FILE"; then
-    ANALYZER_ENABLED_CONFIG=$(grep "analyzer-enabled" "$CONFIG_FILE" | awk '{print $2}')
-    echo "analyzer-enabled from config file: $ANALYZER_ENABLED_CONFIG"
-else
-    echo "analyzer-enabled not found in config (default: false)"
-fi
-
+echo "--- Analyzer Configuration Summary ---"
+echo "Effective analyzer-enabled setting: ${ANALYZER_ENABLED_FINAL:-false}"
 if [ -n "$RPINGMESH_ANALYZER_ENABLED" ]; then
-    echo "RPINGMESH_ANALYZER_ENABLED env var: $RPINGMESH_ANALYZER_ENABLED"
+    echo "  Source: Environment variable (RPINGMESH_ANALYZER_ENABLED)"
+elif [ -n "$CONFIG_ANALYZER_ENABLED" ]; then
+    echo "  Source: Configuration file (analyzer-enabled)"
 else
-    echo "RPINGMESH_ANALYZER_ENABLED env var: <not set> (default: false)"
+    echo "  Source: Default value (false)"
 fi
-echo "⚠ WARNING: If analyzer-enabled is false, no data will be uploaded to Analyzer!"
+if [ "$ANALYZER_ENABLED_FINAL" != "true" ] && [ "$ANALYZER_ENABLED_FINAL" != "True" ] && [ "$ANALYZER_ENABLED_FINAL" != "1" ]; then
+    echo "⚠ WARNING: Analyzer is disabled - no data will be uploaded to Analyzer!"
+fi
 echo
 
 echo "--- System Information ---"
@@ -243,35 +278,34 @@ sleep 2
 echo "SSH service started"
 echo
 
-echo "--- Starting Agent Directly (Supervisor Disabled) ---"
-echo "Agent will start with the following effective configuration:"
+echo "--- Starting Supervisor ---"
+echo "Agent will start with the following configuration:"
 echo "  - Agent Directory: $RPINGMESH_AGENT_DIR_PATH"
 echo "  - Config file: $CONFIG_FILE"
-echo "  - Controller: ${CONTROLLER_ADDR}"
-echo "  - Analyzer: ${ANALYZER_ADDR}"
-echo "  - Analyzer Enabled: ${RPINGMESH_ANALYZER_ENABLED:-false (from config file)}"
-echo
-echo "=========================================="
-echo "Starting Agent Process..."
-echo "=========================================="
-echo
-
-# Build agent command arguments
-AGENT_ARGS=("--config" "$CONFIG_FILE")
-
 if [ -n "$RPINGMESH_CONTROLLER_ADDR" ]; then
-    AGENT_ARGS+=("--controller-addr" "$RPINGMESH_CONTROLLER_ADDR")
+    echo "  - Controller: ${CONTROLLER_ADDR} (from environment variable)"
+else
+    echo "  - Controller: ${CONTROLLER_ADDR} (from config file)"
 fi
-
 if [ -n "$RPINGMESH_ANALYZER_ADDR" ]; then
-    AGENT_ARGS+=("--analyzer-addr" "$RPINGMESH_ANALYZER_ADDR")
+    echo "  - Analyzer: ${ANALYZER_ADDR} (from environment variable)"
+else
+    echo "  - Analyzer: ${ANALYZER_ADDR} (from config file)"
 fi
+if [ -n "$RPINGMESH_ANALYZER_ENABLED" ]; then
+    echo "  - Analyzer Enabled: ${ANALYZER_ENABLED_FINAL:-false} (from environment variable)"
+else
+    echo "  - Analyzer Enabled: ${ANALYZER_ENABLED_FINAL:-false} (from config file)"
+fi
+echo ""
+echo "Note: All configuration values are loaded from agent.yaml"
+echo "      Environment variables (RPINGMESH_*) can override config file values"
+echo
 
-# Execute agent directly (replace shell with agent process)
-exec /usr/local/bin/agent "${AGENT_ARGS[@]}"
+echo "=========================================="
+echo "Starting Supervisor..."
+echo "=========================================="
+echo
 
-# Note: Supervisor is temporarily disabled for debugging
-# To re-enable, uncomment the line below and comment out the exec above
-# exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
-
-
+# 启动supervisor
+exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf

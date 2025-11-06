@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Script 3: Initialize persistent directory structure
+# Script 3: Initialize persistent directory structure for client-side agent
 # This script creates the directory structure for persistent storage under the parent directory
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,13 +30,10 @@ if [[ "$DATA_DIR" != /* ]]; then
     DATA_DIR="$(cd "$SCRIPT_DIR" && cd "$(dirname "$DATA_DIR")" && pwd)/$(basename "$DATA_DIR")"
 fi
 
-print_info "Initializing persistent directories under: $DATA_DIR/rpingmesh"
+print_info "Initializing persistent directories for client-side agent under: $DATA_DIR/rpingmesh/agent"
 
-# Create directories with rpingmesh hierarchy
-mkdir -p "$DATA_DIR/rpingmesh/controller"
-mkdir -p "$DATA_DIR/rpingmesh/rqlite"
-mkdir -p "$DATA_DIR/rpingmesh/analyzer"
-mkdir -p "$DATA_DIR/rpingmesh/otel-collector"
+# Create directories with rpingmesh hierarchy (only agent component)
+mkdir -p "$DATA_DIR/rpingmesh/agent"
 
 print_info "Directory initialization complete"
 

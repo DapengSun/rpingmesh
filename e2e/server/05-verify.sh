@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Script 5: Verify rqlite, controller and analyzer services
+# Script 5: Verify server-side services (rqlite, controller and analyzer)
 # Simple verification through supervisor logs and HTTP ports
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,12 +48,12 @@ check_log() {
     fi
 }
 
-echo "Verifying services..."
+echo "Verifying server-side services..."
 
 # Check RQLite
 echo ""
 echo "RQLite:"
-if check_container "rpingmesh-rqlite-e2e"; then
+if check_container "rpingmesh-rqlite-server"; then
     print_ok "Container is running"
     
     if check_http "http://localhost:4001/status"; then
@@ -67,7 +67,7 @@ if check_container "rpingmesh-rqlite-e2e"; then
         print_fail "HTTP endpoint not accessible"
     fi
     
-    if check_log "rpingmesh-rqlite-e2e" "rqlite entered RUNNING state"; then
+    if check_log "rpingmesh-rqlite-server" "rqlite entered RUNNING state"; then
         print_ok "Supervisor log shows RUNNING state"
     else
         print_fail "Supervisor log does not show RUNNING state"
@@ -79,7 +79,7 @@ fi
 # Check Controller
 echo ""
 echo "Controller:"
-if check_container "rpingmesh-controller-e2e"; then
+if check_container "rpingmesh-controller-server"; then
     print_ok "Container is running"
     
     if check_http "http://localhost:50051" 2>/dev/null || nc -zv localhost 50051 2>/dev/null; then
@@ -106,7 +106,7 @@ fi
 # Check Analyzer
 echo ""
 echo "Analyzer:"
-if check_container "rpingmesh-analyzer-e2e"; then
+if check_container "rpingmesh-analyzer-server"; then
     print_ok "Container is running"
     
     if check_http "http://localhost:50052" 2>/dev/null || nc -zv localhost 50052 2>/dev/null; then

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Script 4: Read environment variables and start docker-compose
+# Script 4: Read environment variables and start docker-compose for client-side agent
 # This script loads environment from .env and starts docker-compose with proper volume mounts
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,16 +51,9 @@ if [ ! -d "$DATA_DIR" ]; then
     exit 1
 fi
 
-# Verify component directories exist (under rpingmesh subdirectory)
-MISSING_DIRS=()
-for component in "controller" "rqlite" "analyzer" "otel-collector"; do
-    if [ ! -d "$DATA_DIR/rpingmesh/$component" ]; then
-        MISSING_DIRS+=("$component")
-    fi
-done
-
-if [ ${#MISSING_DIRS[@]} -gt 0 ]; then
-    print_error "Missing component directories: ${MISSING_DIRS[*]}"
+# Verify agent directory exists (under rpingmesh subdirectory)
+if [ ! -d "$DATA_DIR/rpingmesh/agent" ]; then
+    print_error "Missing agent directory: $DATA_DIR/rpingmesh/agent"
     print_info "Run ./03-init-dirs.sh first to initialize directory structure."
     exit 1
 fi

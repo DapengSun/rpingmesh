@@ -1,0 +1,17 @@
+services:
+  agent:
+    image: rpingmesh-agent:latest
+    container_name: rpingmesh-agent-client
+    privileged: true
+    environment:
+      # Optional: Environment variables can override config file values
+      # If not set, values from agent.yaml will be used
+      - RPINGMESH_CONTROLLER_ADDR=${RPINGMESH_CONTROLLER_ADDR:-}
+      - RPINGMESH_ANALYZER_ADDR=${RPINGMESH_ANALYZER_ADDR:-}
+      - RPINGMESH_ANALYZER_ENABLED=${RPINGMESH_ANALYZER_ENABLED:-}
+      # Note: All other configuration should be set in agent.yaml file
+    volumes:
+      - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/agent:/private/rpingmesh/agent
+      - ./config/agent.yaml:/private/rpingmesh/agent/config/agent.yaml:ro
+    restart: unless-stopped
+

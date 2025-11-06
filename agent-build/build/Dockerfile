@@ -33,7 +33,7 @@ RUN command -v nc >/dev/null && \
     command -v timeout >/dev/null && \
     command -v bash >/dev/null
 
-RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d /var/run/sshd
+RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d /var/run/sshd /app/config /app/data
 
 # SSH配置
 RUN echo 'root:rpingmesh' | chpasswd && \
@@ -43,6 +43,8 @@ RUN echo 'root:rpingmesh' | chpasswd && \
     echo 'Port 22' >> /etc/ssh/sshd_config && \
     echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config && \
     echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config
+
+WORKDIR /app
 
 # 二进制放置到不会被覆盖的路径
 COPY agent /usr/local/bin/agent
