@@ -48,22 +48,22 @@ if check_container "rpingmesh-agent-client"; then
     print_ok "Container is running"
     
     # Check supervisor is running
-    if check_log "rpingmesh-agent-client" "supervisord"; then
+    if check_log "supervisord"; then
         print_ok "Supervisor is running"
     else
         print_fail "Supervisor may not be running"
     fi
     
     # Check if agent process is registered in supervisor
-    if docker exec rpingmesh-agent-client supervisorctl status agent >/dev/null 2>&1; then
-        agent_status=$(docker exec rpingmesh-agent-client supervisorctl status agent 2>/dev/null | awk '{print $2}')
-        if [ "$agent_status" = "RUNNING" ]; then
-            print_ok "Agent process is running (supervisor status: $agent_status)"
-        else
-            print_fail "Agent process status: $agent_status"
-        fi
+    agent_output=$(docker exec rpingmesh-agent-client supervisorctl status agent 2>&1 || true)
+    if echo "$agent_output" | grep -q "RUNNING"; then
+        print_ok "Agent process is running (supervisor status: RUNNING)"
     else
-        print_fail "Cannot check agent supervisor status"
+        if [ -n "$agent_output" ]; then
+            print_fail "Agent supervisor status check: ${agent_output}"
+        else
+            print_fail "Cannot check agent supervisor status"
+        fi
     fi
 else
     print_fail "Container is not running"

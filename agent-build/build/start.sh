@@ -200,21 +200,8 @@ test_connectivity() {
     
     echo "=== Testing $name connectivity ($host:$port) ==="
     
-    # Test 1: DNS resolution
-    echo "1. DNS resolution test..."
-    if command -v nslookup >/dev/null 2>&1; then
-        if nslookup "$host" >/dev/null 2>&1; then
-            echo "   ✓ DNS resolution successful"
-            nslookup "$host" 2>&1 | grep -E "Name:|Address:" | head -3 || true
-        else
-            echo "   ✗ DNS resolution failed for $host"
-            echo "   Note: This might be normal if $host is an IP address or localhost"
-        fi
-    fi
-    echo
-    
-    # Test 2: Ping test (only for IP addresses or resolved hosts)
-    echo "2. Ping test (if applicable)..."
+    # Test 1: Ping test (only for IP addresses or resolved hosts)
+    echo "1. Ping test (if applicable)..."
     if command -v ping >/dev/null 2>&1; then
         # Try to ping if it looks like an IP or if DNS resolved
         if [[ "$host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$host" =~ ^localhost$ ]]; then
@@ -229,8 +216,8 @@ test_connectivity() {
     fi
     echo
     
-    # Test 3: Netcat test
-    echo "3. Netcat (nc) connectivity test..."
+    # Test 2: Netcat test
+    echo "2. Netcat (nc) connectivity test..."
     if command -v nc >/dev/null 2>&1; then
         if timeout 3 nc -zv "$host" "$port" 2>&1; then
             echo "   ✓ $name connection successful via netcat"
@@ -245,8 +232,8 @@ test_connectivity() {
     fi
     echo
     
-    # Test 4: Telnet test
-    echo "4. Telnet connectivity test..."
+    # Test 3: Telnet test
+    echo "3. Telnet connectivity test..."
     if command -v telnet >/dev/null 2>&1; then
         # Telnet doesn't have a good timeout mechanism, so use a small timeout with expect-like behavior
         if timeout 3 bash -c "echo > /dev/tcp/$host/$port" 2>/dev/null; then
@@ -263,35 +250,6 @@ test_connectivity() {
         else
             echo "   ✗ $name connection failed (bash TCP test)"
         fi
-    fi
-    echo
-    
-    # Test 5: gRPC specific test (only for otel-collector, using grpcurl if available)
-    echo "5. gRPC endpoint test..."
-    # Only test gRPC for otel-collector, skip for Controller and Analyzer
-    if [ "$name" = "Otel-Collector" ]; then
-        if command -v grpcurl >/dev/null 2>&1; then
-            # Try to list services using grpcurl (tests gRPC connection)
-            # Use plaintext mode since we're using insecure connections
-            if timeout 5 grpcurl -plaintext "$host:$port" list >/dev/null 2>&1; then
-                echo "   ✓ gRPC connection successful"
-                # Try to get more details about available services
-                SERVICES=$(timeout 5 grpcurl -plaintext "$host:$port" list 2>/dev/null || echo "")
-                if [ -n "$SERVICES" ]; then
-                    echo "   Available services:"
-                    echo "$SERVICES" | sed 's/^/     - /'
-                fi
-                success=true
-            else
-                echo "   ✗ gRPC connection failed"
-                echo "   Note: Service may not support gRPC reflection or endpoint may be unreachable"
-            fi
-        else
-            echo "   (grpcurl not available)"
-            echo "   Note: Cannot test gRPC connection without grpcurl"
-        fi
-    else
-        echo "   (Skipped: gRPC test only applies to Otel-Collector)"
     fi
     echo
     
@@ -331,16 +289,24 @@ fi
 METRICS_ENABLED_FINAL="${RPINGMESH_METRICS_ENABLED:-${CONFIG_METRICS_ENABLED:-true}}"
 if [ "$METRICS_ENABLED_FINAL" = "true" ] || [ "$METRICS_ENABLED_FINAL" = "True" ] || [ "$METRICS_ENABLED_FINAL" = "1" ]; then
     if [ -n "$OTEL_COLLECTOR_HOST" ] && [ -n "$OTEL_COLLECTOR_PORT" ]; then
+        echo "=== Otel-Collector Connectivity Test ==="
+        echo "Metrics enabled: $METRICS_ENABLED_FINAL"
+        echo "Otel-Collector address: $OTEL_COLLECTOR_ADDR (host: $OTEL_COLLECTOR_HOST, port: $OTEL_COLLECTOR_PORT)"
+        echo
         test_connectivity "Otel-Collector" "$OTEL_COLLECTOR_HOST" "$OTEL_COLLECTOR_PORT"
     else
         echo "=== Otel-Collector Connectivity Test ==="
         echo "Skipped: Otel-Collector address not configured"
+        echo "  OTEL_COLLECTOR_HOST: ${OTEL_COLLECTOR_HOST:-<empty>}"
+        echo "  OTEL_COLLECTOR_PORT: ${OTEL_COLLECTOR_PORT:-<empty>}"
+        echo "  OTEL_COLLECTOR_ADDR: ${OTEL_COLLECTOR_ADDR:-<empty>}"
         echo "(Set otel-collector-addr in config file to enable)"
         echo
     fi
 else
     echo "=== Otel-Collector Connectivity Test ==="
     echo "Skipped: Metrics are not enabled"
+    echo "  metrics-enabled: $METRICS_ENABLED_FINAL"
     echo "(Set metrics-enabled: true in config file or RPINGMESH_METRICS_ENABLED=true to enable)"
     echo
 fi
