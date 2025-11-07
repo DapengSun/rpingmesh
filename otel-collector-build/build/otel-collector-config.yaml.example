@@ -38,16 +38,15 @@ exporters:
   debug:
     verbosity: normal  # 可选值: detailed, normal, basic
   
-  # Prometheus exporter（已注释，需要时取消注释）
-  # prometheus:
-  #   endpoint: "0.0.0.0:8889"
-  #   const_labels:
-  #     service: "rpingmesh-collector"
-  #   sending_queue:
-  #     enabled: true
-  #     num_consumers: 10
-  #     queue_size: 5000
-  #     storage: file_storage
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    const_labels:
+      service: "rpingmesh-collector"
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 5000
+      storage: file_storage
 
 service:
   # 注册扩展
@@ -57,7 +56,5 @@ service:
     metrics:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [debug]
-      # 配置 Prometheus 后，取消注释下面一行，并添加 prometheus 到 exporters
-      # exporters: [debug, prometheus]
+      exporters: [debug, prometheus]
 

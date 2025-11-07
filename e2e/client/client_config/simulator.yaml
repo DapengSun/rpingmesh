@@ -1,0 +1,6 @@
+simulation:
+  enabled: true
+  profile: tor-mesh
+  otel-addr: grpc://58.206.206.38:4317
+  agent-id: sim-agent-demo
+

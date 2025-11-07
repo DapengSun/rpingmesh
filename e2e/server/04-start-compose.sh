@@ -53,7 +53,7 @@ fi
 
 # Verify component directories exist (under rpingmesh subdirectory)
 MISSING_DIRS=()
-for component in "controller" "rqlite" "analyzer" "otel-collector"; do
+for component in "controller" "rqlite" "analyzer" "otel-collector" "prometheus"; do
     if [ ! -d "$DATA_DIR/rpingmesh/$component" ]; then
         MISSING_DIRS+=("$component")
     fi
@@ -100,6 +100,8 @@ if [ $? -eq 0 ]; then
     print_info "  - Controller: localhost:50051"
     print_info "  - Analyzer: localhost:50052"
     print_info "  - RQLite: localhost:4001"
+    print_info "  - Prometheus: http://localhost:9091"
+    print_info "  - Grafana: http://localhost:3000"
 else
     print_error "Failed to start docker-compose"
     exit 1

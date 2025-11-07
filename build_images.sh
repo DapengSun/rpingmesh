@@ -1,77 +1,113 @@
 #!/bin/bash
 
-# 分离式构建脚本 - 构建Agent、Controller、RQLite、Analyzer、OpenTelemetry Collector独立镜像
+# 分离式构建脚本 - 构建Agent、Controller、RQLite、Analyzer、OpenTelemetry Collector等镜像
 set -e
 
 BUILD_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
-echo "开始构建R-Pingmesh镜像..."
+BUILD_TARGET="${1:-all}"
 
-# 1. 构建Agent镜像
+build_agent() {
+    echo "构建Agent镜像..."
+    bash "$BUILD_ROOT"/agent-build/build.sh
+}
 
-echo "1. 构建Agent镜像..."
-bash "$BUILD_ROOT"/agent-build/build.sh
+build_controller() {
+    echo "构建Controller镜像..."
+    bash "$BUILD_ROOT"/controller-build/build.sh
+}
 
-echo
+build_rqlite() {
+    echo "构建RQLite镜像..."
+    bash "$BUILD_ROOT"/rqlite-build/build.sh
+}
 
-echo "=================================================="
+build_analyzer() {
+    echo "构建Analyzer镜像..."
+    bash "$BUILD_ROOT"/analyzer-build/build.sh
+}
 
-echo
+build_otel_collector() {
+    echo "构建OpenTelemetry Collector镜像..."
+    bash "$BUILD_ROOT"/otel-collector-build/build.sh
+}
 
-# 2. 构建Controller镜像
+build_prometheus() {
+    echo "构建Prometheus镜像..."
+    bash "$BUILD_ROOT"/prometheus_build/build.sh
+}
 
-echo "2. 构建Controller镜像..."
-bash "$BUILD_ROOT"/controller-build/build.sh
+build_simulator() {
+    echo "构建Agent Simulator镜像..."
+    bash "$BUILD_ROOT"/simulator-build/build.sh
+}
 
-echo
+build_grafana() {
+    echo "构建Grafana镜像..."
+    bash "$BUILD_ROOT"/grafana_build/build.sh
+}
 
-echo "=================================================="
+build_all() {
+    build_agent
+    echo "=================================================="
+    build_controller
+    echo "=================================================="
+    build_rqlite
+    echo "=================================================="
+    build_analyzer
+    echo "=================================================="
+    build_otel_collector
+    echo "=================================================="
+    build_prometheus
+    echo "=================================================="
+    build_simulator
+    echo "=================================================="
+    build_grafana
+}
 
-echo
-
-# 3. 构建RQLite镜像
-
-echo "3. 构建RQLite镜像..."
-bash "$BUILD_ROOT"/rqlite-build/build.sh
-
-echo
-
-echo "=================================================="
-
-echo
-
-# 4. 构建Analyzer镜像
-
-echo "4. 构建Analyzer镜像..."
-bash "$BUILD_ROOT"/analyzer-build/build.sh
-
-echo
-
-echo "=================================================="
-
-echo
-
-# 5. 构建OpenTelemetry Collector镜像
-
-echo "5. 构建OpenTelemetry Collector镜像..."
-bash "$BUILD_ROOT"/otel-collector-build/build.sh
-
-echo
-
-echo "=================================================="
-
-echo
-
-# 6. 显示所有镜像
-
-echo "所有构建的镜像:"
-
-docker images | grep rpingmesh || true
-
-echo
-
-echo "=================================================="
-
-echo
-
-echo "分离式构建完成！"
+case "$BUILD_TARGET" in
+    all)
+        echo "开始构建所有R-Pingmesh镜像..."
+        build_all
+        ;;
+    agent)
+        build_agent
+        ;;
+    controller)
+        build_controller
+        ;;
+    rqlite)
+        build_rqlite
+        ;;
+    analyzer)
+        build_analyzer
+        ;;
+    otel-collector)
+        build_otel_collector
+        ;;
+    prometheus)
+        build_prometheus
+        ;;
+    simulator)
+        build_simulator
+        ;;
+    grafana)
+        build_grafana
+        ;;
+    *)
+        echo "未知的构建目标: $BUILD_TARGET"
+        echo "可选值: all, agent, controller, rqlite, analyzer, otel-collector, prometheus, simulator, grafana"
+        exit 1
+        ;;
+ esac
+ 
+ echo
+ echo "=================================================="
+ echo
+ echo "当前可用镜像:"
+ docker images | grep rpingmesh || true
+ 
+ echo
+ echo "=================================================="
+ echo
+ echo "构建完成！"

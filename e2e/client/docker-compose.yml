@@ -16,3 +16,11 @@ services:
       - ./client_config/agent.yaml:/mnt/config-source/agent.yaml:ro
     restart: unless-stopped
 
+  agent-simulator:
+    image: rpingmesh-agent-simulator:latest
+    container_name: rpingmesh-agent-simulator
+    network_mode: host
+    volumes:
+      - ./client_config/simulator.yaml:/app/config/simulator.yaml:ro
+    restart: unless-stopped
+

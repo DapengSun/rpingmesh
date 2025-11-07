@@ -37,6 +37,7 @@ mkdir -p "$DATA_DIR/rpingmesh/controller"
 mkdir -p "$DATA_DIR/rpingmesh/analyzer"
 mkdir -p "$DATA_DIR/rpingmesh/rqlite"
 mkdir -p "$DATA_DIR/rpingmesh/otel-collector"
+mkdir -p "$DATA_DIR/rpingmesh/prometheus"
 
 print_info "Directory initialization complete"
 

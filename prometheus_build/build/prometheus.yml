@@ -1,0 +1,32 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+# 对接 AlertManager
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# 规则目录
+rule_files:
+  - "${PROMETHEUS_BASE_PATH}/rules/*.yml"
+
+scrape_configs:
+  - job_name: "otel-collector"
+    static_configs:
+      - targets:
+          - "otel-collector:8889"
+
+  - job_name: "node"
+    file_sd_configs:
+      - files:
+          - "${PROMETHEUS_BASE_PATH}/targets/node_exporter.json"
+        refresh_interval: 30s
+
+  - job_name: "dcgm"
+    file_sd_configs:
+      - files:
+          - "${PROMETHEUS_BASE_PATH}/targets/dcgm_exporter.json"
+        refresh_interval: 30s

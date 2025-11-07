@@ -142,6 +142,48 @@ else
     print_fail "Container is not running"
 fi
 
+# Check Prometheus
+echo ""
+echo "Prometheus:"
+if check_container "rpingmesh-prometheus-server"; then
+    print_ok "Container is running"
+
+    if check_http "http://localhost:9091/-/ready"; then
+        print_ok "HTTP readiness endpoint is accessible"
+    else
+        if nc -zv localhost 9091 >/dev/null 2>&1; then
+            print_fail "Ready endpoint not responding, but port 9091 is reachable"
+        else
+            print_fail "Prometheus port 9091 not accessible"
+        fi
+    fi
+
+    check_startup_health "rpingmesh-prometheus-server" "Prometheus" 10
+else
+    print_fail "Container is not running"
+fi
+
+# Check Grafana
+echo ""
+echo "Grafana:"
+if check_container "rpingmesh-grafana-server"; then
+    print_ok "Container is running"
+
+    if check_http "http://localhost:3000/login"; then
+        print_ok "Login page reachable"
+    else
+        if nc -zv localhost 3000 >/dev/null 2>&1; then
+            print_fail "Grafana port 3000 reachable but HTTP check failed"
+        else
+            print_fail "Grafana port 3000 not accessible"
+        fi
+    fi
+
+    check_startup_health "rpingmesh-grafana-server" "Grafana" 15
+else
+    print_fail "Container is not running"
+fi
+
 echo ""
 echo "Verification complete"
 
