@@ -1,5 +1,5 @@
 # R-Pingmesh Controller Configuration for E2E Testing
-listen_addr: "0.0.0.0:50051"
-database_uri: "http://rqlite:4001"
-log_level: "info"  # debug, info, warn, error
+listen-addr: "0.0.0.0:50051"
+database-uri: "http://rqlite:4001"
+log-level: "info"  # debug, info, warn, error
 

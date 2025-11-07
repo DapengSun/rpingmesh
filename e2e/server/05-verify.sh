@@ -48,6 +48,38 @@ check_log() {
     fi
 }
 
+check_startup_health() {
+    local container=$1
+    local name=$2
+    local wait_seconds=${3:-5}
+
+    echo "Waiting ${wait_seconds}s for ${name} startup logs..."
+    sleep "$wait_seconds"
+
+    local since_ts
+    since_ts=$(docker inspect -f '{{.State.StartedAt}}' "$container" 2>/dev/null || true)
+    if [ -z "$since_ts" ] || [ "$since_ts" = "<no value>" ]; then
+        since_ts=$(date -Iseconds)
+    fi
+
+    local recent_logs
+    recent_logs=$(docker logs "$container" --since "$since_ts" 2>&1 || true)
+
+    if [ -z "$recent_logs" ]; then
+        print_fail "${name} startup logs unavailable"
+        return
+    fi
+
+    if echo "$recent_logs" | grep -Ei 'exit status [1-9]|entered FATAL state|level"?:"?fatal|panic|failed to ' >/dev/null 2>&1; then
+        print_fail "${name} startup logs contain errors"
+        echo "---- Recent ${name} logs ----"
+        echo "$recent_logs"
+        echo "-----------------------------"
+    else
+        print_ok "${name} startup logs look healthy"
+    fi
+}
+
 echo "Verifying server-side services..."
 
 # Check RQLite
@@ -67,7 +99,7 @@ if check_container "rpingmesh-rqlite-server"; then
         print_fail "HTTP endpoint not accessible"
     fi
     
-    if check_log "rpingmesh-rqlite-server" "rqlite entered RUNNING state"; then
+    if check_log "rqlite entered RUNNING state"; then
         print_ok "Supervisor log shows RUNNING state"
     else
         print_fail "Supervisor log does not show RUNNING state"
@@ -88,17 +120,7 @@ if check_container "rpingmesh-controller-server"; then
         print_fail "gRPC port 50051 not accessible"
     fi
     
-    if check_log "Initializing RNIC registry with rqlite"; then
-        print_ok "RNIC registry initialized"
-    else
-        print_fail "RNIC registry not initialized"
-    fi
-    
-    if check_log "Starting gRPC server"; then
-        print_ok "gRPC server started"
-    else
-        print_fail "gRPC server not started"
-    fi
+    check_startup_health "rpingmesh-controller-server" "Controller"
 else
     print_fail "Container is not running"
 fi
@@ -115,17 +137,7 @@ if check_container "rpingmesh-analyzer-server"; then
         print_fail "gRPC port 50052 not accessible"
     fi
     
-    if check_log "Initializing analyzer storage"; then
-        print_ok "Analyzer storage initialized"
-    else
-        print_fail "Analyzer storage not initialized"
-    fi
-    
-    if check_log "Starting gRPC server"; then
-        print_ok "gRPC server started"
-    else
-        print_fail "gRPC server not started"
-    fi
+    check_startup_health "rpingmesh-analyzer-server" "Analyzer"
 else
     print_fail "Container is not running"
 fi

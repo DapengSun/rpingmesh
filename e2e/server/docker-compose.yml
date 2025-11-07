@@ -33,12 +33,6 @@ services:
         condition: service_healthy
     ports:
       - "50051:50051"
-    environment:
-      - RPINGMESH_CONTROLLER_LISTEN_ADDR=0.0.0.0:50051
-      - RPINGMESH_CONTROLLER_DATABASE_URI=http://rqlite:4001
-      - RPINGMESH_CONTROLLER_LOG_LEVEL=info
-      - LISTEN_ADDR=0.0.0.0:50051
-      - DATABASE_URI=http://rqlite:4001
     networks:
       rpingmesh-network:
         ipv4_address: 172.28.0.20
@@ -63,12 +57,6 @@ services:
         condition: service_healthy
     ports:
       - "50052:50052"
-    environment:
-      - RPINGMESH_ANALYZER_LISTEN_ADDR=0.0.0.0:50052
-      - RPINGMESH_ANALYZER_DATABASE_URI=http://rqlite:4001
-      - RPINGMESH_ANALYZER_LOG_LEVEL=info
-      - LISTEN_ADDR=0.0.0.0:50052
-      - DATABASE_URI=http://rqlite:4001
     networks:
       rpingmesh-network:
         ipv4_address: 172.28.0.30
