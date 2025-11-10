@@ -21,6 +21,7 @@ services:
     container_name: rpingmesh-agent-simulator
     network_mode: host
     volumes:
-      - ./client_config/simulator.yaml:/app/config/simulator.yaml:ro
+      - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/simulator:/private/rpingmesh/simulator
+      - ./client_config/simulator.yaml:/mnt/config-source/simulator.yaml:ro
     restart: unless-stopped
 

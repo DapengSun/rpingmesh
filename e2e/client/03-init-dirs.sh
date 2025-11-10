@@ -32,8 +32,14 @@ fi
 
 print_info "Initializing persistent directories for client-side agent under: $DATA_DIR/rpingmesh/agent"
 
-# Create directories with rpingmesh hierarchy (only agent component)
+# Create directories with rpingmesh hierarchy (agent + simulator components)
 mkdir -p "$DATA_DIR/rpingmesh/agent"
+mkdir -p "$DATA_DIR/rpingmesh/agent/config"
+mkdir -p "$DATA_DIR/rpingmesh/agent/data"
+
+mkdir -p "$DATA_DIR/rpingmesh/simulator"
+mkdir -p "$DATA_DIR/rpingmesh/simulator/config"
+mkdir -p "$DATA_DIR/rpingmesh/simulator/data"
 
 print_info "Directory initialization complete"
 
