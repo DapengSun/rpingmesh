@@ -1,0 +1,42 @@
+#!/bin/bash
+set -e
+
+IMAGE_NAME="rpingmesh-analyzer"
+TAG="latest"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILD_DIR="${SCRIPT_DIR}/build"
+BUILD_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PROJECT_ROOT="$(cd "${BUILD_ROOT}/.." && pwd)"
+SRC_ROOT="${PROJECT_ROOT}/src/rpingmesh"
+
+GOPROXY_VAL="${GOPROXY:-https://goproxy.cn,direct}"
+
+if [ ! -d "${SRC_ROOT}" ]; then
+  echo "未找到源码目录: ${SRC_ROOT}"
+  exit 1
+fi
+
+mkdir -p "$BUILD_DIR"
+echo "1. 编译analyzer二进制..."
+
+mkdir -p "$HOME/.cache/go-build" "$HOME/go/pkg/mod" || true
+
+docker run --rm \
+  -e GOPROXY="$GOPROXY_VAL" \
+  -v "$PROJECT_ROOT:/workspace" \
+  -v "$HOME/.cache/go-build:/root/.cache/go-build" \
+  -v "$HOME/go/pkg/mod:/go/pkg/mod" \
+  -w /workspace/src/rpingmesh \
+  golang:1.24-bullseye \
+  sh -c 'set -e; \
+    go env -w GOPROXY=$GOPROXY; \
+    go env -w GOSUMDB=sum.golang.org; \
+    go mod download -x; \
+    CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /workspace/build/analyzer/build/analyzer ./cmd/analyzer'
+
+echo "2. 构建analyzer镜像..."
+cd "$BUILD_DIR"
+docker build -t "$IMAGE_NAME:$TAG" .
+
+echo "Analyzer镜像构建完成！"
+docker images "$IMAGE_NAME:$TAG"

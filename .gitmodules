@@ -1,0 +1,4 @@
+[submodule "src/rpingmesh"]
+	path = src/rpingmesh
+	url = git@github.com:yuuki/rpingmesh.git
+	branch = main

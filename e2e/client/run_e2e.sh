@@ -50,3 +50,4 @@ echo ""
 
 print_info "E2E deployment completed successfully!"
 
+
