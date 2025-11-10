@@ -35,17 +35,32 @@ type config struct {
 	Simulation simulationConfig `mapstructure:"simulation"`
 }
 
+type endpoint struct {
+	AgentID    string
+	Hostname   string
+	GID        string
+	DeviceName string
+}
+
 type sample struct {
 	Timeout        bool
 	RTT            time.Duration
 	ProberDelay    time.Duration
 	ResponderDelay time.Duration
+	Destination    endpoint
 }
 
+const (
+	probeTypeTorMesh        = "TOR_MESH"
+	probeTypeInterTor       = "INTER_TOR"
+	probeTypeServiceTracing = "SERVICE_TRACING"
+)
+
 type scenario struct {
-	Name     string
-	Interval time.Duration
-	Samples  []sample
+	Name      string
+	ProbeType string
+	Interval  time.Duration
+	Samples   []sample
 }
 
 func main() {
@@ -70,6 +85,10 @@ func main() {
 	scen := lookupScenario(cfg.Simulation.Profile)
 	logger.Info().Str("profile", scen.Name).Dur("interval", scen.Interval).Msg("simulation enabled")
 
+	if scen.ProbeType == "" {
+		scen.ProbeType = probeTypeTorMesh
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -89,14 +108,34 @@ func main() {
 	defer ticker.Stop()
 
 	samples := scen.Samples
+	srcEndpoint := endpoint{
+		AgentID:    cfg.Simulation.AgentID,
+		Hostname:   fmt.Sprintf("%s-host", cfg.Simulation.AgentID),
+		GID:        fmt.Sprintf("fe80::%s", strings.ReplaceAll(cfg.Simulation.AgentID, "-", "")),
+		DeviceName: "sim_mlx5_0",
+	}
 	if len(samples) == 0 {
-		samples = []sample{{Timeout: false, RTT: 150 * time.Millisecond, ProberDelay: 40 * time.Millisecond, ResponderDelay: 35 * time.Millisecond}}
+		samples = []sample{
+			{
+				Timeout:        false,
+				RTT:            150 * time.Millisecond,
+				ProberDelay:    40 * time.Millisecond,
+				ResponderDelay: 35 * time.Millisecond,
+				Destination: endpoint{
+					AgentID:    "sim-peer-1",
+					Hostname:   "sim-peer-1",
+					GID:        "fe80::3001",
+					DeviceName: "sim_mlx5_1",
+				},
+			},
+		}
 	}
 
-	commonAttrs := []attribute.KeyValue{
-		attribute.String("source", "simulation"),
-		attribute.String("profile", scen.Name),
-		attribute.String("agent_id", cfg.Simulation.AgentID),
+	baseAttrs := []attribute.KeyValue{
+		attribute.String("src_agent_id", srcEndpoint.AgentID),
+		attribute.String("src_hostname", srcEndpoint.Hostname),
+		attribute.String("src_gid", srcEndpoint.GID),
+		attribute.String("src_device_name", srcEndpoint.DeviceName),
 	}
 
 	logger.Info().Str("collector", cfg.Simulation.OtelAddr).Str("agent_id", cfg.Simulation.AgentID).Msg("starting simulation loop")
@@ -110,15 +149,31 @@ func main() {
 		case <-ticker.C:
 			sample := samples[idx%len(samples)]
 			idx++
+			attrs := append([]attribute.KeyValue{}, baseAttrs...)
+			if sample.Destination.AgentID != "" {
+				attrs = append(attrs,
+					attribute.String("dst_agent_id", sample.Destination.AgentID),
+					attribute.String("dst_hostname", sample.Destination.Hostname),
+					attribute.String("dst_gid", sample.Destination.GID),
+					attribute.String("dst_device_name", sample.Destination.DeviceName),
+				)
+			}
+			attrs = append(attrs, attribute.String("probe_type", scen.ProbeType))
 			if sample.Timeout {
-				metrics.timeout.Add(context.Background(), 1, metric.WithAttributes(commonAttrs...))
-				logger.Debug().Msg("recorded synthetic timeout")
+				metrics.timeout.Add(context.Background(), 1, metric.WithAttributes(attrs...))
+				logger.Debug().Str("dst_agent_id", sample.Destination.AgentID).Msg("recorded synthetic timeout")
 				continue
 			}
-			metrics.rtt.Record(context.Background(), sample.RTT.Nanoseconds(), metric.WithAttributes(commonAttrs...))
-			metrics.prober.Record(context.Background(), sample.ProberDelay.Nanoseconds(), metric.WithAttributes(commonAttrs...))
-			metrics.responder.Record(context.Background(), sample.ResponderDelay.Nanoseconds(), metric.WithAttributes(commonAttrs...))
-			logger.Debug().Dur("rtt", sample.RTT).Dur("prober_delay", sample.ProberDelay).Dur("responder_delay", sample.ResponderDelay).Msg("recorded synthetic observation")
+			metrics.rtt.Record(context.Background(), sample.RTT.Nanoseconds(), metric.WithAttributes(attrs...))
+			metrics.prober.Record(context.Background(), sample.ProberDelay.Nanoseconds(), metric.WithAttributes(attrs...))
+			metrics.responder.Record(context.Background(), sample.ResponderDelay.Nanoseconds(), metric.WithAttributes(attrs...))
+			logger.Debug().
+				Str("dst_agent_id", sample.Destination.AgentID).
+				Str("probe_type", scen.ProbeType).
+				Dur("rtt", sample.RTT).
+				Dur("prober_delay", sample.ProberDelay).
+				Dur("responder_delay", sample.ResponderDelay).
+				Msg("recorded synthetic observation")
 		}
 	}
 }
@@ -152,30 +207,111 @@ func lookupScenario(name string) scenario {
 
 var scenarios = map[string]scenario{
 	"tor-mesh": {
-		Name:     "tor-mesh",
-		Interval: 2 * time.Second,
+		Name:      "tor-mesh",
+		ProbeType: probeTypeTorMesh,
+		Interval:  2 * time.Second,
 		Samples: []sample{
-			{Timeout: false, RTT: 120 * time.Millisecond, ProberDelay: 30 * time.Millisecond, ResponderDelay: 25 * time.Millisecond},
-			{Timeout: false, RTT: 140 * time.Millisecond, ProberDelay: 32 * time.Millisecond, ResponderDelay: 28 * time.Millisecond},
-			{Timeout: true},
+			{
+				Timeout:        false,
+				RTT:            120 * time.Millisecond,
+				ProberDelay:    30 * time.Millisecond,
+				ResponderDelay: 25 * time.Millisecond,
+				Destination: endpoint{
+					AgentID:    "tor-peer",
+					Hostname:   "tor-peer",
+					GID:        "fe80::2100",
+					DeviceName: "mlx5_1",
+				},
+			},
+			{
+				Timeout: true,
+				Destination: endpoint{
+					AgentID:    "tor-peer",
+					Hostname:   "tor-peer",
+					GID:        "fe80::2100",
+					DeviceName: "mlx5_1",
+				},
+			},
 		},
 	},
 	"inter-tor": {
-		Name:     "inter-tor",
-		Interval: 3 * time.Second,
+		Name:      "inter-tor",
+		ProbeType: probeTypeInterTor,
+		Interval:  3 * time.Second,
 		Samples: []sample{
-			{Timeout: false, RTT: 260 * time.Millisecond, ProberDelay: 45 * time.Millisecond, ResponderDelay: 40 * time.Millisecond},
-			{Timeout: false, RTT: 320 * time.Millisecond, ProberDelay: 48 * time.Millisecond, ResponderDelay: 42 * time.Millisecond},
-			{Timeout: true},
+			{
+				Timeout:        false,
+				RTT:            260 * time.Millisecond,
+				ProberDelay:    45 * time.Millisecond,
+				ResponderDelay: 40 * time.Millisecond,
+				Destination: endpoint{
+					AgentID:    "inter-peer",
+					Hostname:   "inter-peer",
+					GID:        "fe80::3100",
+					DeviceName: "mlx5_2",
+				},
+			},
+			{
+				Timeout:        false,
+				RTT:            320 * time.Millisecond,
+				ProberDelay:    48 * time.Millisecond,
+				ResponderDelay: 42 * time.Millisecond,
+				Destination: endpoint{
+					AgentID:    "inter-peer",
+					Hostname:   "inter-peer",
+					GID:        "fe80::3100",
+					DeviceName: "mlx5_2",
+				},
+			},
+			{
+				Timeout: true,
+				Destination: endpoint{
+					AgentID:    "inter-peer",
+					Hostname:   "inter-peer",
+					GID:        "fe80::3100",
+					DeviceName: "mlx5_2",
+				},
+			},
 		},
 	},
 	"lossy": {
-		Name:     "lossy",
-		Interval: 4 * time.Second,
+		Name:      "lossy",
+		ProbeType: probeTypeServiceTracing,
+		Interval:  4 * time.Second,
 		Samples: []sample{
-			{Timeout: false, RTT: 480 * time.Millisecond, ProberDelay: 70 * time.Millisecond, ResponderDelay: 60 * time.Millisecond},
-			{Timeout: true},
-			{Timeout: false, RTT: 520 * time.Millisecond, ProberDelay: 75 * time.Millisecond, ResponderDelay: 65 * time.Millisecond},
+			{
+				Timeout:        false,
+				RTT:            480 * time.Millisecond,
+				ProberDelay:    70 * time.Millisecond,
+				ResponderDelay: 60 * time.Millisecond,
+				Destination: endpoint{
+					AgentID:    "service-peer",
+					Hostname:   "service-peer",
+					GID:        "fe80::4100",
+					DeviceName: "mlx5_3",
+				},
+			},
+			{
+				Timeout: true,
+				Destination: endpoint{
+					AgentID:    "service-peer",
+					Hostname:   "service-peer",
+					GID:        "fe80::4100",
+					DeviceName: "mlx5_3",
+				},
+			},
+			{
+				Timeout:        false,
+				RTT:            520 * time.Millisecond,
+				ProberDelay:    75 * time.Millisecond,
+				ResponderDelay: 65 * time.Millisecond,
+				Destination: endpoint{
+					AgentID:    "service-peer",
+					Hostname:   "service-peer",
+					GID:        "fe80::4100",
+					DeviceName: "mlx5_3",
+				},
+			},
 		},
 	},
 }
@@ -244,19 +380,19 @@ func newMetrics(ctx context.Context, agentID, collectorAddr string) (*metricSet,
 
 	meter := provider.Meter("github.com/yuuki/rpingmesh/cmd/simulator")
 
-	rtt, err := meter.Int64Histogram("rpingmesh.simulated_rtt", metric.WithUnit("ns"))
+	rtt, err := meter.Int64Histogram("rpingmesh.nwrtt", metric.WithUnit("ns"))
 	if err != nil {
 		return nil, fmt.Errorf("create rtt histogram: %w", err)
 	}
-	prober, err := meter.Int64Histogram("rpingmesh.simulated_prober_delay", metric.WithUnit("ns"))
+	prober, err := meter.Int64Histogram("rpingmesh.prober_delay", metric.WithUnit("ns"))
 	if err != nil {
 		return nil, fmt.Errorf("create prober histogram: %w", err)
 	}
-	responder, err := meter.Int64Histogram("rpingmesh.simulated_responder_delay", metric.WithUnit("ns"))
+	responder, err := meter.Int64Histogram("rpingmesh.responder_delay", metric.WithUnit("ns"))
 	if err != nil {
 		return nil, fmt.Errorf("create responder histogram: %w", err)
 	}
-	timeout, err := meter.Int64Counter("rpingmesh.simulated_timeout", metric.WithUnit("{count}"))
+	timeout, err := meter.Int64Counter("rpingmesh.timeout", metric.WithUnit("{count}"))
 	if err != nil {
 		return nil, fmt.Errorf("create timeout counter: %w", err)
 	}

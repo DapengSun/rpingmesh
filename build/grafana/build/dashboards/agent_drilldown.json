@@ -1,6 +1,6 @@
 {
   "id": null,
-  "title": "R-Pingmesh Cluster Overview",
+  "title": "R-Pingmesh Agent Drilldown",
   "timezone": "browser",
   "editable": true,
   "schemaVersion": 39,
@@ -11,7 +11,7 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "Cluster Avg RTT (ns)",
+      "title": "Agent Avg RTT (ns)",
       "datasource": null,
       "gridPos": {"x": 0, "y": 0, "w": 12, "h": 4},
       "fieldConfig": {
@@ -19,7 +19,6 @@
           "unit": "ns",
           "decimals": 0,
           "mappings": [],
-          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -45,7 +44,7 @@
       },
       "targets": [
         {
-          "expr": "sum(increase(rpingmesh_nwrtt_nanoseconds_sum[5m])) / sum(increase(rpingmesh_nwrtt_nanoseconds_count[5m]))",
+          "expr": "sum(increase(rpingmesh_nwrtt_nanoseconds_sum{src_agent_id=~\"$src_agent\"}[5m])) / sum(increase(rpingmesh_nwrtt_nanoseconds_count{src_agent_id=~\"$src_agent\"}[5m]))",
           "refId": "A"
         }
       ]
@@ -53,7 +52,7 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "Timeouts per Minute",
+      "title": "Agent Timeouts per Minute",
       "datasource": null,
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 4},
       "fieldConfig": {
@@ -61,7 +60,6 @@
           "unit": "ops",
           "decimals": 2,
           "mappings": [],
-          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -87,7 +85,7 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(rpingmesh_timeout_total[5m])) * 60",
+          "expr": "sum(rate(rpingmesh_timeout_total{src_agent_id=~\"$src_agent\"}[5m])) * 60",
           "refId": "A"
         }
       ]
@@ -95,12 +93,13 @@
     {
       "id": 3,
       "type": "timeseries",
-      "title": "RTT Mean by Probe Type",
+      "title": "RTT Mean by Destination",
+      "datasource": null,
       "gridPos": {"x": 0, "y": 4, "w": 24, "h": 8},
       "targets": [
         {
-          "expr": "sum(increase(rpingmesh_nwrtt_nanoseconds_sum[5m])) by (probe_type) / sum(increase(rpingmesh_nwrtt_nanoseconds_count[5m])) by (probe_type)",
-          "legendFormat": "{{probe_type}}",
+          "expr": "sum(increase(rpingmesh_nwrtt_nanoseconds_sum{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id) / sum(increase(rpingmesh_nwrtt_nanoseconds_count{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id)",
+          "legendFormat": "{{dst_agent_id}}",
           "refId": "A"
         }
       ],
@@ -132,12 +131,13 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "Timeout Rate by Probe Type",
+      "title": "Timeout Rate by Destination",
+      "datasource": null,
       "gridPos": {"x": 0, "y": 12, "w": 24, "h": 8},
       "targets": [
         {
-          "expr": "sum(increase(rpingmesh_timeout_total[5m])) by (probe_type)",
-          "legendFormat": "{{probe_type}}",
+          "expr": "sum(increase(rpingmesh_timeout_total{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id)",
+          "legendFormat": "{{dst_agent_id}}",
           "refId": "A"
         }
       ],
@@ -170,21 +170,22 @@
     {
       "id": 5,
       "type": "table",
-      "title": "Top Destinations by Timeout",
+      "title": "Destination Summary",
+      "datasource": null,
       "gridPos": {"x": 0, "y": 20, "w": 24, "h": 8},
       "targets": [
         {
-          "expr": "topk(5, sum(increase(rpingmesh_timeout_total[5m])) by (dst_agent_id))",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "{{dst_agent_id}} timeouts",
-          "refId": "A"
-        },
-        {
-          "expr": "topk(5, sum(increase(rpingmesh_nwrtt_nanoseconds_sum[5m])) by (dst_agent_id) / sum(increase(rpingmesh_nwrtt_nanoseconds_count[5m])) by (dst_agent_id))",
+          "expr": "topk(5, sum(increase(rpingmesh_nwrtt_nanoseconds_sum{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id) / sum(increase(rpingmesh_nwrtt_nanoseconds_count{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id)) / 1e6",
           "format": "table",
           "instant": true,
           "legendFormat": "{{dst_agent_id}} rtt",
+          "refId": "A"
+        },
+        {
+          "expr": "topk(5, sum(increase(rpingmesh_timeout_total{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{dst_agent_id}} timeouts",
           "refId": "B"
         }
       ],
@@ -195,18 +196,72 @@
             "mode": "absolute",
             "steps": [
               {"color": "green", "value": null},
-              {"color": "red", "value": 200000000}
+              {"color": "red", "value": 200}
+            ]
+          },
+          "unit": "ms",
+          "decimals": 1
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #B"
+            },
+            "properties": [
+              {"id": "unit", "value": "short"},
+              {"id": "decimals", "value": 0},
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {"color": "green", "value": null},
+                    {"color": "orange", "value": 5},
+                    {"color": "red", "value": 20}
+                  ]
+                }
+              }
             ]
           }
-        },
-        "overrides": []
+        ]
       },
       "options": {
-        "showHeader": true
+        "showHeader": true,
+        "footer": {
+          "show": false,
+          "countRows": false,
+          "fields": "",
+          "calcs": []
+        }
       }
     }
   ],
-  "templating": {"list": []},
+  "templating": {
+    "list": [
+      {
+        "name": "src_agent",
+        "label": "Source Agent",
+        "type": "query",
+        "datasource": null,
+        "definition": "label_values(rpingmesh_nwrtt_nanoseconds_sum, src_agent_id)",
+        "query": "label_values(rpingmesh_nwrtt_nanoseconds_sum, src_agent_id)",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": false,
+        "refresh": 2,
+        "sort": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": [],
+        "regex": "",
+        "skipUrlSync": false
+      }
+    ]
+  },
   "time": {"from": "now-1h", "to": "now"}
 }
 

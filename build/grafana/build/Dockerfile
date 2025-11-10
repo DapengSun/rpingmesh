@@ -33,6 +33,7 @@ RUN mkdir -p ${GRAFANA_BASE_PATH}/data \
 COPY grafana.ini /tmp/grafana.ini
 COPY datasources/datasources.yml /tmp/datasources.yml
 COPY dashboards/dashboards.yml /tmp/dashboards.yml
+COPY dashboards/*.json /tmp/dashboards/
 COPY dashboards/default_dashboard.json /tmp/default_dashboard.json
 
 RUN chown -R 472:472 ${GRAFANA_BASE_PATH}
