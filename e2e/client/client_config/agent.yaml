@@ -1,4 +1,5 @@
 agent-id: ""
+tor-id: ""
 
 controller-addr: "58.206.206.38:50051"
 analyzer-addr: "58.206.206.38:50052"
