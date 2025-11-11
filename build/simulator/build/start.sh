@@ -49,5 +49,11 @@ if grep -qiE '^\s*enabled\s*:\s*false' "${CONFIG_SIM_FILE}"; then
     exit 0
 fi
 
-exec /usr/local/bin/simulator --config "${CONFIG_SIM_FILE}"
+SIM_CMD=(/usr/local/bin/simulator --config "${CONFIG_SIM_FILE}")
+if [ -n "${SIMULATION_WORKER:-}" ]; then
+    SIM_CMD+=("--worker" "${SIMULATION_WORKER}")
+    echo "信息: 使用模拟器 worker ${SIMULATION_WORKER}"
+fi
+
+exec "${SIM_CMD[@]}"
 

@@ -37,9 +37,12 @@ mkdir -p "$DATA_DIR/rpingmesh/agent"
 mkdir -p "$DATA_DIR/rpingmesh/agent/config"
 mkdir -p "$DATA_DIR/rpingmesh/agent/data"
 
-mkdir -p "$DATA_DIR/rpingmesh/simulator"
-mkdir -p "$DATA_DIR/rpingmesh/simulator/config"
-mkdir -p "$DATA_DIR/rpingmesh/simulator/data"
+mkdir -p "$DATA_DIR/rpingmesh/simulator/tor-peer/config"
+mkdir -p "$DATA_DIR/rpingmesh/simulator/tor-peer/data"
+mkdir -p "$DATA_DIR/rpingmesh/simulator/inter-tor/config"
+mkdir -p "$DATA_DIR/rpingmesh/simulator/inter-tor/data"
+mkdir -p "$DATA_DIR/rpingmesh/simulator/cross-az/config"
+mkdir -p "$DATA_DIR/rpingmesh/simulator/cross-az/data"
 
 print_info "Directory initialization complete"
 

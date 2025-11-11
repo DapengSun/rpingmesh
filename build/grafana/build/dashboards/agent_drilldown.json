@@ -52,12 +52,12 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "Agent Timeouts per Minute",
+      "title": "Agent Timeouts per Minute（次/分钟）",
       "datasource": null,
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 4},
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "short",
           "decimals": 2,
           "mappings": [],
           "thresholds": {
@@ -131,19 +131,19 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "Timeout Rate by Destination",
+      "title": "Timeout Rate by Destination（次/分钟）",
       "datasource": null,
       "gridPos": {"x": 0, "y": 12, "w": 24, "h": 8},
       "targets": [
         {
-          "expr": "sum(increase(rpingmesh_timeout_total{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id)",
+          "expr": "sum(rate(rpingmesh_timeout_total{src_agent_id=~\"$src_agent\"}[5m]) * 60) by (dst_agent_id)",
           "legendFormat": "{{dst_agent_id}}",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "short",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -182,7 +182,7 @@
           "refId": "A"
         },
         {
-          "expr": "topk(5, sum(increase(rpingmesh_timeout_total{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id))",
+          "expr": "topk(5, sum(rate(rpingmesh_timeout_total{src_agent_id=~\"$src_agent\"}[5m]) * 60) by (dst_agent_id))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{dst_agent_id}} timeouts",
@@ -210,7 +210,7 @@
             },
             "properties": [
               {"id": "unit", "value": "short"},
-              {"id": "decimals", "value": 0},
+              {"id": "decimals", "value": 2},
               {
                 "id": "thresholds",
                 "value": {

@@ -53,12 +53,12 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "Timeouts per Minute",
+      "title": "Timeouts per Minute（次/分钟）",
       "datasource": null,
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 4},
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "short",
           "decimals": 2,
           "mappings": [],
           "min": 0,
@@ -87,7 +87,7 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(rpingmesh_timeout_total[5m])) * 60",
+          "expr": "sum(rate(rpingmesh_timeout_total[5m]) * 60)",
           "refId": "A"
         }
       ]
@@ -132,18 +132,18 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "Timeout Rate by Probe Type",
+      "title": "Timeout Rate by Probe Type（次/分钟）",
       "gridPos": {"x": 0, "y": 12, "w": 24, "h": 8},
       "targets": [
         {
-          "expr": "sum(increase(rpingmesh_timeout_total[5m])) by (probe_type)",
+          "expr": "sum(rate(rpingmesh_timeout_total[5m]) * 60) by (probe_type)",
           "legendFormat": "{{probe_type}}",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "short",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -174,7 +174,7 @@
       "gridPos": {"x": 0, "y": 20, "w": 24, "h": 8},
       "targets": [
         {
-          "expr": "topk(5, sum(increase(rpingmesh_timeout_total[5m])) by (dst_agent_id))",
+          "expr": "topk(5, sum(rate(rpingmesh_timeout_total[5m]) * 60) by (dst_agent_id))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{dst_agent_id}} timeouts",
