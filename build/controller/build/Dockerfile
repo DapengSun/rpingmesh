@@ -16,6 +16,17 @@ RUN sed -i 's/archive.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/source
     htop \
     && rm -rf /var/lib/apt/lists/*
 
+ARG BUILD_UID=2133
+ARG BUILD_GID=2015
+ENV BUILD_UID=${BUILD_UID} \
+    BUILD_GID=${BUILD_GID} \
+    BUILD_USER=rpingmesh \
+    BUILD_GROUP=rpingmesh \
+    BUILD_HOME=/home/rpingmesh
+
+RUN groupadd -g ${BUILD_GID} ${BUILD_GROUP} && \
+    useradd -m -u ${BUILD_UID} -g ${BUILD_GID} -s /bin/bash -d ${BUILD_HOME} ${BUILD_USER}
+
 # 创建必要的目录
 RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d /var/run/sshd /app/config /app/data
 

@@ -3,6 +3,11 @@ set -e
 
 echo "启动 R-Pingmesh Analyzer..."
 
+BUILD_USER=${BUILD_USER:-rpingmesh}
+BUILD_GROUP=${BUILD_GROUP:-rpingmesh}
+BUILD_UID=${BUILD_UID:-2133}
+BUILD_GID=${BUILD_GID:-2015}
+
 # 持久化目录结构
 PERSISTENT_BASE="/private/rpingmesh/analyzer"
 PERSISTENT_DATA_DIR="$PERSISTENT_BASE/data"
@@ -10,6 +15,7 @@ PERSISTENT_CONFIG_DIR="$PERSISTENT_BASE/config"
 
 # 创建持久化目录
 mkdir -p "$PERSISTENT_DATA_DIR" "$PERSISTENT_CONFIG_DIR"
+chown -R "${BUILD_UID}:${BUILD_GID}" "$PERSISTENT_BASE" || true
 
 # 检查配置文件是否已挂载（通过 bind mount）
 CONFIG_FILE="$PERSISTENT_CONFIG_DIR/analyzer.yaml"
@@ -57,6 +63,7 @@ if [ -L "/app/config" ] || [ -e "/app/config" ]; then
     rm -rf "/app/config"
 fi
 ln -sf "$PERSISTENT_CONFIG_DIR" "/app/config"
+chown -R "${BUILD_UID}:${BUILD_GID}" "$PERSISTENT_DATA_DIR" "$PERSISTENT_CONFIG_DIR" || true
 
 # 环境变量设置
 : ${LISTEN_ADDR:=0.0.0.0:50052}

@@ -2,6 +2,19 @@ FROM grafana/grafana:11.1.0
 
 USER root
 
+ARG BUILD_UID=2133
+ARG BUILD_GID=2015
+ENV BUILD_UID=${BUILD_UID} \
+    BUILD_GID=${BUILD_GID} \
+    BUILD_USER=rpingmesh \
+    BUILD_GROUP=rpingmesh \
+    BUILD_HOME=/home/rpingmesh
+
+RUN addgroup -g ${BUILD_GID} ${BUILD_GROUP} && \
+    adduser -D -u ${BUILD_UID} -G ${BUILD_GROUP} -h ${BUILD_HOME} -s /bin/bash ${BUILD_USER} && \
+    mkdir -p ${BUILD_HOME} && \
+    chown -R ${BUILD_UID}:${BUILD_GID} ${BUILD_HOME}
+
 # 安装必要的工具
 RUN apk add --no-cache \
         supervisor \
@@ -27,7 +40,7 @@ RUN mkdir -p ${GRAFANA_BASE_PATH}/data \
     && mkdir -p ${GRAFANA_BASE_PATH}/provisioning/datasources \
     && mkdir -p ${GRAFANA_BASE_PATH}/provisioning/dashboards \
     && mkdir -p ${GRAFANA_BASE_PATH}/config \
-    && chown -R 472:472 ${GRAFANA_BASE_PATH}
+    && chown -R ${BUILD_UID}:${BUILD_GID} ${GRAFANA_BASE_PATH}
 
 # 复制配置文件到容器内临时位置
 COPY grafana.ini /tmp/grafana.ini
@@ -36,7 +49,7 @@ COPY dashboards/dashboards.yml /tmp/dashboards.yml
 COPY dashboards/*.json /tmp/dashboards/
 COPY dashboards/default_dashboard.json /tmp/default_dashboard.json
 
-RUN chown -R 472:472 ${GRAFANA_BASE_PATH}
+RUN chown -R ${BUILD_UID}:${BUILD_GID} ${GRAFANA_BASE_PATH}
 
 # supervisor 配置
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf

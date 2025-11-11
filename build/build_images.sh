@@ -5,7 +5,51 @@ set -e
 
 BUILD_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
-BUILD_TARGET="${1:-all}"
+BUILD_TARGET="all"
+BUILD_UID=${BUILD_UID:-2133}
+BUILD_GID=${BUILD_GID:-2015}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        all|agent|controller|rqlite|analyzer|otel-collector|prometheus|simulator|grafana)
+            BUILD_TARGET="$1"
+            shift
+            ;;
+        --uid)
+            if [ -n "${2:-}" ]; then
+                BUILD_UID="$2"
+                shift 2
+            else
+                echo "错误: --uid 需要一个参数" >&2
+                exit 1
+            fi
+            ;;
+        --uid=*)
+            BUILD_UID="${1#*=}"
+            shift
+            ;;
+        --gid)
+            if [ -n "${2:-}" ]; then
+                BUILD_GID="$2"
+                shift 2
+            else
+                echo "错误: --gid 需要一个参数" >&2
+                exit 1
+            fi
+            ;;
+        --gid=*)
+            BUILD_GID="${1#*=}"
+            shift
+            ;;
+        *)
+            echo "未知参数: $1" >&2
+            echo "用法: $0 [构建目标] [--uid UID] [--gid GID]" >&2
+            exit 1
+            ;;
+    esac
+done
+
+export BUILD_UID BUILD_GID
 
 build_agent() {
     echo "构建Agent镜像..."

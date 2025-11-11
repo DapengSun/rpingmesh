@@ -23,6 +23,7 @@ build/*/build/*.log
 
 # Docker image archives
 images
+images_*
 
 # E2E runtime data
 e2e/**/data_dir/

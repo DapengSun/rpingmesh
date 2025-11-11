@@ -3,6 +3,11 @@ set -e
 
 echo "启动 R-Pingmesh Controller..."
 
+BUILD_USER=${BUILD_USER:-rpingmesh}
+BUILD_GROUP=${BUILD_GROUP:-rpingmesh}
+BUILD_UID=${BUILD_UID:-2133}
+BUILD_GID=${BUILD_GID:-2015}
+
 # 持久化目录结构
 PERSISTENT_BASE="/private/rpingmesh/controller"
 PERSISTENT_DATA_DIR="$PERSISTENT_BASE/data"
@@ -10,6 +15,7 @@ PERSISTENT_CONFIG_DIR="$PERSISTENT_BASE/config"
 
 mkdir -p "$PERSISTENT_DATA_DIR"
 mkdir -p "$PERSISTENT_CONFIG_DIR"
+chown -R "${BUILD_UID}:${BUILD_GID}" "$PERSISTENT_BASE" || true
 
 # 检查配置文件是否已挂载（通过 bind mount）
 # 配置文件通过 bind mount 挂载到 /private/rpingmesh/controller/config/controller.yaml
@@ -58,6 +64,7 @@ if [ -L "/app/config" ] || [ -e "/app/config" ]; then
     rm -rf "/app/config"
 fi
 ln -sf "$PERSISTENT_CONFIG_DIR" "/app/config"
+chown -R "${BUILD_UID}:${BUILD_GID}" "$PERSISTENT_DATA_DIR" "$PERSISTENT_CONFIG_DIR" || true
 
 if [ ! -f "/app/config/controller.yaml" ]; then
     echo "错误: 配置文件 /app/config/controller.yaml 不存在（软链接后检查）"

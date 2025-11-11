@@ -22,6 +22,17 @@ RUN sed -i 's/archive.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/source
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
+ARG BUILD_UID=2133
+ARG BUILD_GID=2015
+ENV BUILD_UID=${BUILD_UID} \
+    BUILD_GID=${BUILD_GID} \
+    BUILD_USER=rpingmesh \
+    BUILD_GROUP=rpingmesh \
+    BUILD_HOME=/home/rpingmesh
+
+RUN groupadd -g ${BUILD_GID} ${BUILD_GROUP} && \
+    useradd -m -u ${BUILD_UID} -g ${BUILD_GID} -s /bin/bash -d ${BUILD_HOME} ${BUILD_USER}
+
 # 下载并安装 OpenTelemetry Collector Contrib
 # 注意：必须使用 otelcol-contrib（不是 otelcol），因为需要 file_storage 等扩展
 # otelcol-contrib 包含所有核心功能 + 社区贡献的扩展（如 file_storage）

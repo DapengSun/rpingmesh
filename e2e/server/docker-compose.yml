@@ -8,12 +8,12 @@ services:
       - "4002:4002"
       - "2222:22"
     environment:
-      - NODE_ID=172.28.0.10
+      - NODE_ID=10.244.0.10
       - HTTP_ADDR=0.0.0.0:4001
       - RAFT_ADDR=0.0.0.0:4002
     networks:
       rpingmesh-network:
-        ipv4_address: 172.28.0.10
+        ipv4_address: 10.244.0.10
     volumes:
       - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/rqlite:/private/rpingmesh/rqlite
     healthcheck:
@@ -35,7 +35,7 @@ services:
       - "50051:50051"
     networks:
       rpingmesh-network:
-        ipv4_address: 172.28.0.20
+        ipv4_address: 10.244.0.20
     volumes:
       - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/controller:/private/rpingmesh/controller
       - ./server_config/controller.yaml:/mnt/config-source/controller.yaml:ro
@@ -59,7 +59,7 @@ services:
       - "50052:50052"
     networks:
       rpingmesh-network:
-        ipv4_address: 172.28.0.30
+        ipv4_address: 10.244.0.30
     volumes:
       - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/analyzer:/private/rpingmesh/analyzer
       - ./server_config/analyzer.yaml:/mnt/config-source/analyzer.yaml:ro
@@ -79,7 +79,7 @@ services:
       - "4317:4317"
     networks:
       rpingmesh-network:
-        ipv4_address: 172.28.0.40
+        ipv4_address: 10.244.0.40
     volumes:
       - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/otel-collector:/private/rpingmesh/otel-collector
     restart: unless-stopped
@@ -101,7 +101,7 @@ services:
       - "9091:9090"
     networks:
       rpingmesh-network:
-        ipv4_address: 172.28.0.50
+        ipv4_address: 10.244.0.50
     volumes:
       - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/prometheus:/private/rpingmesh/prometheus
     restart: unless-stopped
@@ -123,7 +123,7 @@ services:
       - "3000:3000"
     networks:
       rpingmesh-network:
-        ipv4_address: 172.28.0.60
+        ipv4_address: 10.244.0.60
     volumes:
       - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/grafana:/private/rpingmesh/grafana
     restart: unless-stopped
@@ -139,4 +139,4 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.28.0.0/16
+        - subnet: 10.244.0.0/24

@@ -8,7 +8,13 @@ PERSIST_CONFIG_DIR="${PERSIST_BASE}/config"
 PERSIST_DATA_DIR="${PERSIST_BASE}/data"
 PERSIST_FILE="${PERSIST_CONFIG_DIR}/simulator.yaml"
 
+BUILD_USER=${BUILD_USER:-rpingmesh}
+BUILD_GROUP=${BUILD_GROUP:-rpingmesh}
+BUILD_UID=${BUILD_UID:-2133}
+BUILD_GID=${BUILD_GID:-2015}
+
 mkdir -p "${PERSIST_CONFIG_DIR}" "${PERSIST_DATA_DIR}"
+chown -R "${BUILD_UID}:${BUILD_GID}" "${PERSIST_BASE}" || true
 
 if [ -f "${CONFIG_SOURCE}" ] && [ -s "${CONFIG_SOURCE}" ]; then
     if [ ! -f "${PERSIST_FILE}" ]; then
@@ -39,14 +45,18 @@ if [ -L "${CONFIG_DIR}" ] || [ -e "${CONFIG_DIR}" ]; then
     rm -rf "${CONFIG_DIR}"
 fi
 ln -sf "${PERSIST_CONFIG_DIR}" "${CONFIG_DIR}"
+chown -R "${BUILD_UID}:${BUILD_GID}" "${PERSIST_CONFIG_DIR}" "${PERSIST_DATA_DIR}" || true
 
 CONFIG_SIM_FILE="${CONFIG_DIR}/simulator.yaml"
 
 # 如果配置中禁用了模拟器，则保持容器存活但不启动模拟器进程
 if grep -qiE '^\s*enabled\s*:\s*false' "${CONFIG_SIM_FILE}"; then
     echo "信息: 配置中 simulation.enabled=false，保持容器空闲运行"
-    tail -f /dev/null
-    exit 0
+    if command -v runuser >/dev/null 2>&1; then
+        exec runuser -u "${BUILD_USER}" -- tail -f /dev/null
+    else
+        exec su -s /bin/sh "${BUILD_USER}" -c "tail -f /dev/null"
+    fi
 fi
 
 SIM_CMD=(/usr/local/bin/simulator --config "${CONFIG_SIM_FILE}")
@@ -55,5 +65,14 @@ if [ -n "${SIMULATION_WORKER:-}" ]; then
     echo "信息: 使用模拟器 worker ${SIMULATION_WORKER}"
 fi
 
-exec "${SIM_CMD[@]}"
+if command -v runuser >/dev/null 2>&1; then
+    exec runuser -u "${BUILD_USER}" -- "${SIM_CMD[@]}"
+else
+    cmd_string=""
+    for arg in "${SIM_CMD[@]}"; do
+        cmd_string="${cmd_string}$(printf '%q ' "${arg}")"
+    done
+    exec su -s /bin/sh "${BUILD_USER}" -c "${cmd_string}"
+fi
+
 

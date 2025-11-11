@@ -2,6 +2,17 @@ FROM ubuntu/prometheus:3-24.04_stable
 
 USER root
 
+ARG BUILD_UID=2133
+ARG BUILD_GID=2015
+ENV BUILD_UID=${BUILD_UID} \
+    BUILD_GID=${BUILD_GID} \
+    BUILD_USER=rpingmesh \
+    BUILD_GROUP=rpingmesh \
+    BUILD_HOME=/home/rpingmesh
+
+RUN groupadd -g ${BUILD_GID} ${BUILD_GROUP} && \
+    useradd -m -u ${BUILD_UID} -g ${BUILD_GID} -s /bin/bash -d ${BUILD_HOME} ${BUILD_USER}
+
 ARG USE_INTRANET=false
 
 # 内网 apt 源配置
@@ -52,6 +63,7 @@ RUN mkdir -p ${PROMETHEUS_BASE_PATH}/config \
     && mkdir -p ${PROMETHEUS_BASE_PATH}/data \
     && mkdir -p ${PROMETHEUS_BASE_PATH}/rules \
     && mkdir -p ${PROMETHEUS_BASE_PATH}/targets \
+    && chown -R ${BUILD_UID}:${BUILD_GID} ${PROMETHEUS_BASE_PATH} \
     && rm -rf /prometheus \
     && ln -s ${PROMETHEUS_BASE_PATH}/data /prometheus
 
@@ -61,7 +73,7 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 # 启动脚本
 COPY start-prometheus-supervised.sh /usr/local/bin/start-prometheus-supervised.sh
 RUN chmod +x /usr/local/bin/start-prometheus-supervised.sh && \
-    chown nobody:nogroup /usr/local/bin/start-prometheus-supervised.sh
+    chown ${BUILD_UID}:${BUILD_GID} /usr/local/bin/start-prometheus-supervised.sh
 
 COPY prometheus.yml /etc/prometheus/prometheus.yml
 

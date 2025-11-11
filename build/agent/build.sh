@@ -57,7 +57,12 @@ docker run --rm \
 
 echo "2. 构建Agent镜像..."
 cd "${BUILD_DIR}"
-docker build -t "$IMAGE_NAME:$TAG" .
+BUILD_UID_ARG=${BUILD_UID:-2133}
+BUILD_GID_ARG=${BUILD_GID:-2015}
+docker build \
+    --build-arg BUILD_UID="${BUILD_UID_ARG}" \
+    --build-arg BUILD_GID="${BUILD_GID_ARG}" \
+    -t "$IMAGE_NAME:$TAG" .
 
 echo "Agent镜像构建完成！"
 

@@ -1,10 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
+BUILD_USER=${BUILD_USER:-rpingmesh}
+BUILD_GROUP=${BUILD_GROUP:-rpingmesh}
+BUILD_UID=${BUILD_UID:-2133}
+BUILD_GID=${BUILD_GID:-2015}
+
 GRAFANA_BASE_PATH=${GRAFANA_BASE_PATH:-/private/rpingmesh/grafana}
 
 mkdir -p "${GRAFANA_BASE_PATH}"
-chown -R 472:472 "${GRAFANA_BASE_PATH}"
+chown -R "${BUILD_UID}:${BUILD_GID}" "${GRAFANA_BASE_PATH}" || true
 
 CONFIG_DIR="${GRAFANA_BASE_PATH}/config"
 DATA_DIR="${GRAFANA_BASE_PATH}/data"
@@ -28,7 +33,7 @@ DEFAULT_DASHBOARD_DIR="/tmp/dashboards"
 mkdir -p "${CONFIG_DIR}" "${DATA_DIR}" "${LOG_DIR}" "${PLUGINS_DIR}" \
          "${PROVISIONING_DS_DIR}" "${PROVISIONING_DASH_DIR}"
 
-chown -R 472:472 "${GRAFANA_BASE_PATH}"
+chown -R "${BUILD_UID}:${BUILD_GID}" "${GRAFANA_BASE_PATH}" || true
 
 # 复制 grafana.ini（优先挂载目录，其次镜像内默认模板）
 if [ -f "${CONFIG_SOURCE}" ]; then
@@ -78,7 +83,7 @@ if [ -f "${CONFIG_FILE}" ]; then
 fi
 
 if command -v su-exec >/dev/null 2>&1; then
-    exec su-exec grafana:grafana "${GRAFANA_CMD[@]}"
+    exec su-exec "${BUILD_USER}:${BUILD_GROUP}" "${GRAFANA_CMD[@]}"
 else
-    exec su -s /bin/sh grafana -c "${GRAFANA_CMD[*]}"
+    exec su -s /bin/sh "${BUILD_USER}" -c "${GRAFANA_CMD[*]}"
 fi

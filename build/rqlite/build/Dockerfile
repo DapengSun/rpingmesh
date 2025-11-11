@@ -15,6 +15,17 @@ RUN sed -i 's/archive.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/source
     htop \
     && rm -rf /var/lib/apt/lists/*
 
+ARG BUILD_UID=2133
+ARG BUILD_GID=2015
+ENV BUILD_UID=${BUILD_UID} \
+    BUILD_GID=${BUILD_GID} \
+    BUILD_USER=rpingmesh \
+    BUILD_GROUP=rpingmesh \
+    BUILD_HOME=/home/rpingmesh
+
+RUN groupadd -g ${BUILD_GID} ${BUILD_GROUP} && \
+    useradd -m -u ${BUILD_UID} -g ${BUILD_GID} -s /bin/bash -d ${BUILD_HOME} ${BUILD_USER}
+
 RUN wget -O /tmp/rqlite.tar.gz https://github.com/rqlite/rqlite/releases/download/v8.37.0/rqlite-v8.37.0-linux-amd64.tar.gz && \
     tar -xzf /tmp/rqlite.tar.gz -C /tmp && \
     cp /tmp/rqlite-v8.37.0-linux-amd64/rqlited /usr/local/bin/ && \

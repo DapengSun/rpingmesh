@@ -4,12 +4,18 @@ set -e
 
 echo "启动 R-Pingmesh RQLite..."
 
+BUILD_USER=${BUILD_USER:-rpingmesh}
+BUILD_GROUP=${BUILD_GROUP:-rpingmesh}
+BUILD_UID=${BUILD_UID:-2133}
+BUILD_GID=${BUILD_GID:-2015}
+
 # 持久化目录结构
 PERSISTENT_BASE="/private/rpingmesh/rqlite"
 PERSISTENT_DATA_DIR="$PERSISTENT_BASE/data"
 
 # 创建持久化目录
 mkdir -p "$PERSISTENT_DATA_DIR"
+chown -R "${BUILD_UID}:${BUILD_GID}" "$PERSISTENT_BASE" || true
 
 # 设置 /data 目录：如果是挂载点则直接使用，否则创建软链接
 if mountpoint -q "/data" 2>/dev/null; then
@@ -31,6 +37,8 @@ else
         echo "警告: 无法创建软链接，直接使用 /data 目录"
     fi
 fi
+
+chown -R "${BUILD_UID}:${BUILD_GID}" "$PERSISTENT_DATA_DIR" || true
 
 # 设置节点ID
 export NODE_ID=${NODE_ID:-"rqlite-$(hostname)"}
