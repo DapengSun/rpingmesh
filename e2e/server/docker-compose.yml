@@ -14,6 +14,8 @@ services:
     networks:
       rpingmesh-network:
         ipv4_address: 10.244.0.10
+        aliases:
+          - rqlite
     volumes:
       - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/rqlite:/private/rpingmesh/rqlite
     healthcheck:
@@ -36,6 +38,8 @@ services:
     networks:
       rpingmesh-network:
         ipv4_address: 10.244.0.20
+    extra_hosts:
+      rqlite: 10.244.0.10
     volumes:
       - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/controller:/private/rpingmesh/controller
       - ./server_config/controller.yaml:/mnt/config-source/controller.yaml:ro
@@ -60,6 +64,8 @@ services:
     networks:
       rpingmesh-network:
         ipv4_address: 10.244.0.30
+    extra_hosts:
+        rqlite: 10.244.0.10
     volumes:
       - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/analyzer:/private/rpingmesh/analyzer
       - ./server_config/analyzer.yaml:/mnt/config-source/analyzer.yaml:ro

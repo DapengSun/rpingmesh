@@ -10,10 +10,13 @@ services:
       - RPINGMESH_CONTROLLER_ADDR=${RPINGMESH_CONTROLLER_ADDR:-}
       - RPINGMESH_ANALYZER_ADDR=${RPINGMESH_ANALYZER_ADDR:-}
       - RPINGMESH_ANALYZER_ENABLED=${RPINGMESH_ANALYZER_ENABLED:-}
-      # Note: All other configuration should be set in agent.yaml file
     volumes:
       - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/agent:/private/rpingmesh/agent
       - ./client_config/agent.yaml:/mnt/config-source/agent.yaml:ro
+    ulimits:
+     memlock:
+       soft: -1
+       hard: -1
     restart: unless-stopped
 
   agent-simulator:

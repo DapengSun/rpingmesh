@@ -5,12 +5,12 @@ simulation:
     - name: tor-peer
       profile: tor-mesh
       agent-id: sim-agent-tor
-      enabled: true
+      enabled: false
     - name: inter-tor
       profile: inter-tor
       agent-id: sim-agent-inter
-      enabled: true
+      enabled: false
     - name: cross-az
       profile: cross-az
       agent-id: sim-agent-cross
-      enabled: true
+      enabled: false

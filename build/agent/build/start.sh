@@ -37,6 +37,8 @@ if [ -f "$CONFIG_SOURCE" ] && [ -s "$CONFIG_SOURCE" ]; then
     if [ ! -f "$CONFIG_FILE_TARGET" ]; then
         # 目标文件不存在，复制配置文件到持久化目录
         cp "$CONFIG_SOURCE" "$CONFIG_FILE_TARGET"
+        # 设置配置文件权限为 BUILD_UID:BUILD_GID
+        chown "${BUILD_UID}:${BUILD_GID}" "$CONFIG_FILE_TARGET" || true
         echo "信息: 已将配置文件复制到持久化目录: $CONFIG_FILE_TARGET"
     else
         # 目标文件已存在，不覆盖
