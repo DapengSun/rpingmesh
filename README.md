@@ -33,6 +33,12 @@
      bash patch/apply_analyzer_patch.sh
      ```
 
+   - 同步 Agent 端的 OpenTelemetry 指标实现，确保子模块与补丁版本一致（`otel_metrics.go` 中为了解决同名 Gauge/Histogram 冲突导致的指标注册失败，对原始代码做了修复；）：
+
+     ```bash
+     bash patch/apply_agent_telemetry_patch.sh
+     ```
+
    若脚本提示未找到子模块内容，请先确认已完成上一步。
 
 ## 构建镜像

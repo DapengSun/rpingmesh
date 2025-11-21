@@ -36,6 +36,9 @@ else
     fi
 fi
 
+# 确保所有文件都使用正确的 UID:GID 权限（在所有文件操作完成后）
+chown -R "${BUILD_UID}:${BUILD_GID}" "${PROMETHEUS_BASE_PATH}" || true
+
 export PROMETHEUS_BASE_PATH
 
 echo "[INFO] Prometheus base path: ${PROMETHEUS_BASE_PATH}"

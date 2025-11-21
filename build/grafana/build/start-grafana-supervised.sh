@@ -75,6 +75,9 @@ if [ -d "${DEFAULT_DASHBOARD_DIR}" ]; then
     done
 fi
 
+# 确保所有文件都使用正确的 UID:GID 权限（在所有文件操作完成后）
+chown -R "${BUILD_UID}:${BUILD_GID}" "${GRAFANA_BASE_PATH}" || true
+
 CONFIG_FILE="${CONFIG_DIR}/grafana.ini"
 
 GRAFANA_CMD=(/usr/share/grafana/bin/grafana server --homepath=/usr/share/grafana --packaging=docker)

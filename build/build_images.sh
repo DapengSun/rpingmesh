@@ -6,8 +6,8 @@ set -e
 BUILD_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 BUILD_TARGET="all"
-BUILD_UID=${BUILD_UID:-2133}
-BUILD_GID=${BUILD_GID:-2015}
+BUILD_UID=${BUILD_UID:-1003}
+BUILD_GID=${BUILD_GID:-1003}
 
 while [ $# -gt 0 ]; do
     case "$1" in
