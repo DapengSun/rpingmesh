@@ -90,3 +90,8 @@
 
 部署前建议先阅读文档中的前置条件（网络、端口、存储路径等），并根据实际环境调整 `.env` 与配置模板。
 
+## 界面预览
+
+![集群总览](assets/cluster_overview.png)
+
+![节点详情](assets/agent_drilldown.png)
