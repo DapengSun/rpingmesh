@@ -70,6 +70,8 @@ type Agent struct {
 	serviceTracer      *ebpf.ServiceTracer
 	serviceFlowMonitor *serviceflowmonitor.ServiceFlowMonitor
 	wg                 sync.WaitGroup
+	registrationMu     sync.Mutex
+	registeredOnce     bool
 }
 
 // New creates a new agent instance
@@ -199,15 +201,9 @@ func (a *Agent) Start() error {
 	log.Debug().Msg("Connected to controller")
 
 	// Register with controller
-	if err := a.controllerClient.RegisterAgent(
-		a.agentState.GetAgentID(),
-		a.agentState.GetHostName(),
-		a.agentState.GetAgentIP(),
-		a.agentState.GetDetectedRNICs(),
-	); err != nil {
+	if err := a.registerWithController(); err != nil {
 		return fmt.Errorf("failed to register agent with controller: %w", err)
 	}
-	log.Info().Msg("Registered agent with controller")
 
 	primaryRnic := a.agentState.GetPrimaryRNIC()
 	if primaryRnic == nil {
@@ -463,7 +459,7 @@ func (a *Agent) resultHandler() {
 // runPinglistUpdater periodically updates the pinglist from the controller
 func (a *Agent) runPinglistUpdater() {
 	log.Info().Msg("Starting pinglist updater loop")
-	a.updatePinglist()
+	a.runPinglistUpdateCycle()
 
 	// Set up periodic update
 	ticker := time.NewTicker(time.Duration(a.config.PinglistUpdateIntervalSec) * time.Second)
@@ -476,20 +472,32 @@ func (a *Agent) runPinglistUpdater() {
 			return
 		case <-ticker.C:
 			log.Debug().Msg("Periodic pinglist update triggered")
-			a.updatePinglist()
+			a.runPinglistUpdateCycle()
 		}
 	}
 }
 
-// updatePinglist gets a fresh pinglist from the controller for all local RNICs
-func (a *Agent) updatePinglist() {
+// runPinglistUpdateCycle runs updatePinglist until no immediate retry is needed.
+func (a *Agent) runPinglistUpdateCycle() {
+	for {
+		retry := a.updatePinglist()
+		if !retry {
+			return
+		}
+		log.Debug().Msg("Retrying pinglist update immediately after controller re-registration")
+	}
+}
+
+// updatePinglist gets a fresh pinglist from the controller for all local RNICs.
+// Returns true if the caller should retry immediately (typically after a successful re-registration).
+func (a *Agent) updatePinglist() bool {
 	log.Debug().Msg("Updating pinglist from controller")
 
 	// Get all detected RNICs instead of just the primary one
 	localRnics := a.agentState.GetDetectedRNICs()
 	if len(localRnics) == 0 {
 		log.Error().Msg("No local RNICs available")
-		return
+		return false
 	}
 	log.Debug().Int("local_rnic_count", len(localRnics)).Msg("Retrieved local RNICs for pinglist requests")
 
@@ -501,6 +509,7 @@ func (a *Agent) updatePinglist() {
 	// [NEW] Track successful and failed requests to avoid clearing targets on connection failure
 	var successCount int // [NEW] Track successful requests
 	var errorCount int   // [NEW] Track failed requests
+	registrationRefreshNeeded := false
 
 	// Get pinglist for each local RNIC to ensure unique flow labels
 	for _, localRnic := range localRnics {
@@ -520,9 +529,22 @@ func (a *Agent) updatePinglist() {
 		if err != nil {
 			log.Error().Err(err).Str("rnic_gid", localRnic.GID).Str("feature", "pinglist_error_handling").Msg("[NEW] Failed to get ToR-mesh pinglist for RNIC")
 			errorCount++ // [NEW] Increment error count
+			registrationRefreshNeeded = true
 			continue
 		}
-		log.Debug().Str("rnic_gid", localRnic.GID).Int("target_count", len(torTargets)).Msg("Received ToR-mesh pinglist data for RNIC")
+		log.Info().
+			Str("rnic_gid", localRnic.GID).
+			Int("target_count", len(torTargets)).
+			Str("feature", "pinglist_debug").
+			Msg("[DEBUG] Received ToR-mesh pinglist from controller")
+
+		if len(torTargets) == 0 {
+			log.Warn().
+				Str("rnic_gid", localRnic.GID).
+				Str("hostname", a.agentState.GetHostName()).
+				Str("feature", "pinglist_debug").
+				Msg("[DEBUG] WARNING: Controller returned empty ToR-mesh pinglist")
+		}
 
 		// Add targets to the combined list
 		allTorTargets = append(allTorTargets, torTargets...)
@@ -537,9 +559,22 @@ func (a *Agent) updatePinglist() {
 		if err != nil {
 			log.Error().Err(err).Str("rnic_gid", localRnic.GID).Str("feature", "pinglist_error_handling").Msg("[NEW] Failed to get Inter-ToR pinglist for RNIC")
 			errorCount++ // [NEW] Increment error count
+			registrationRefreshNeeded = true
 			continue
 		}
-		log.Debug().Str("rnic_gid", localRnic.GID).Int("target_count", len(interTorTargets)).Msg("Received Inter-ToR pinglist data for RNIC")
+		log.Info().
+			Str("rnic_gid", localRnic.GID).
+			Int("target_count", len(interTorTargets)).
+			Str("feature", "pinglist_debug").
+			Msg("[DEBUG] Received Inter-ToR pinglist from controller")
+
+		if len(interTorTargets) == 0 {
+			log.Warn().
+				Str("rnic_gid", localRnic.GID).
+				Str("hostname", a.agentState.GetHostName()).
+				Str("feature", "pinglist_debug").
+				Msg("[DEBUG] WARNING: Controller returned empty Inter-ToR pinglist")
+		}
 
 		// Add targets to the combined list
 		allInterTorTargets = append(allInterTorTargets, interTorTargets...)
@@ -559,7 +594,7 @@ func (a *Agent) updatePinglist() {
 			Int("failed_requests", errorCount).
 			Int("local_rnics", len(localRnics)).
 			Msg("[NEW] All pinglist requests failed, keeping existing targets to avoid clearing pinglist")
-		return
+		return false
 	}
 
 	// Log combined ToR-mesh targets grouped by AgentID
@@ -587,6 +622,40 @@ func (a *Agent) updatePinglist() {
 		log.Info().Uint32("interval_ms", lastIntervalMs).Msg("Updated probe interval from controller")
 	}
 
+	// Get current probe targets count before update
+	currentProbeTargets := a.clusterMonitor.GetTargetCount()
+
+	log.Info().
+		Int("current_probe_targets", currentProbeTargets).
+		Int("new_tor_targets", len(allTorTargets)).
+		Int("new_inter_tor_targets", len(allInterTorTargets)).
+		Int("success_count", successCount).
+		Int("error_count", errorCount).
+		Str("feature", "pinglist_debug").
+		Msg("[DEBUG] About to update pinglist - current vs new targets")
+
+	// If new targets are empty but current has targets, log critical warning
+	if len(allTorTargets) == 0 && currentProbeTargets > 0 {
+		log.Error().
+			Int("current_probe_targets", currentProbeTargets).
+			Int("new_tor_targets", len(allTorTargets)).
+			Int("success_count", successCount).
+			Int("error_count", errorCount).
+			Str("feature", "pinglist_debug").
+			Msg("[DEBUG] CRITICAL: New targets are empty but current targets exist - will clear existing targets!")
+		registrationRefreshNeeded = true
+	}
+
+	if registrationRefreshNeeded {
+		log.Warn().Msg("Controller pinglist unavailable or empty, attempting to re-register agent before updating targets")
+		if err := a.registerWithController(); err != nil {
+			log.Error().Err(err).Msg("Failed to re-register agent with controller after pinglist failure")
+			return false
+		}
+		log.Info().Msg("Successfully re-registered agent with controller; retrying pinglist update")
+		return true
+	}
+
 	// Update cluster monitor's pinglist with combined targets
 	a.clusterMonitor.UpdatePinglist(allTorTargets)
 	log.Debug().Msg("Updated cluster monitor pinglist with combined targets")
@@ -597,6 +666,8 @@ func (a *Agent) updatePinglist() {
 		Int("total_inter_tor_targets", len(allInterTorTargets)).
 		Int("local_rnics", len(localRnics)).
 		Msg("Updated pinglists for all local RNICs")
+
+	return false
 }
 
 // Stop stops the agent
@@ -671,6 +742,31 @@ func (a *Agent) Stop() {
 	log.Info().Msg("Agent stopped")
 }
 
+// registerWithController registers (or re-registers) the agent with the controller.
+func (a *Agent) registerWithController() error {
+	err := a.controllerClient.RegisterAgent(
+		a.agentState.GetAgentID(),
+		a.agentState.GetHostName(),
+		a.agentState.GetAgentIP(),
+		a.agentState.GetDetectedRNICs(),
+	)
+	if err != nil {
+		return err
+	}
+
+	a.registrationMu.Lock()
+	first := !a.registeredOnce
+	a.registeredOnce = true
+	a.registrationMu.Unlock()
+
+	if first {
+		log.Info().Msg("Registered agent with controller")
+	} else {
+		log.Info().Msg("Re-registered agent with controller")
+	}
+	return nil
+}
+
 // Run runs the agent with signal handling for graceful shutdown
 func (a *Agent) Run() error {
 	log.Debug().Msg("Running agent")
@@ -735,4 +831,3 @@ func initLogging(level string) {
 	// Configure pretty logging for development
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 }
-
