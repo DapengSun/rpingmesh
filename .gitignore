@@ -33,3 +33,5 @@ e2e/**/.env
 .specstory
 
 /exp/
+
+/artifact/
