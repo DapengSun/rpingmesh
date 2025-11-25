@@ -46,6 +46,12 @@
      bash patch/apply_agent_patch.sh
      ```
 
+   - 应用 RDMA CQ 回补，修复 `ibv_post_recv` 因重复 repost 导致的 slot 被多次重放：
+
+     ```bash
+     bash patch/apply_rdma_cq_patch.sh
+     ```
+
    若脚本提示未找到子模块内容，请先确认已完成上一步。
 
 ## 构建镜像
