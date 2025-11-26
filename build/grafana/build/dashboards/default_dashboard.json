@@ -11,7 +11,7 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "Cluster Avg RTT (ns)",
+      "title": "集群平均延迟",
       "datasource": null,
       "gridPos": {"x": 0, "y": 0, "w": 12, "h": 4},
       "fieldConfig": {
@@ -53,7 +53,7 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "Timeouts per Minute（次/分钟）",
+      "title": "每分钟超时次数",
       "datasource": null,
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 4},
       "fieldConfig": {
@@ -93,10 +93,136 @@
       ]
     },
     {
+      "id": 6,
+      "type": "stat",
+      "title": "延迟中位数 (50%请求)",
+      "datasource": null,
+      "gridPos": {"x": 0, "y": 4, "w": 8, "h": 4},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ns",
+          "decimals": 0,
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 120000000},
+              {"color": "red", "value": 200000000}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "text": {}
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(rpingmesh_nwrtt_nanoseconds_bucket[5m])) by (le))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "延迟P90 (90%请求)",
+      "datasource": null,
+      "gridPos": {"x": 8, "y": 4, "w": 8, "h": 4},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ns",
+          "decimals": 0,
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 120000000},
+              {"color": "red", "value": 200000000}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "text": {}
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.90, sum(rate(rpingmesh_nwrtt_nanoseconds_bucket[5m])) by (le))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "延迟P95 (95%请求)",
+      "datasource": null,
+      "gridPos": {"x": 16, "y": 4, "w": 8, "h": 4},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ns",
+          "decimals": 0,
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 120000000},
+              {"color": "red", "value": 200000000}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "text": {}
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(rpingmesh_nwrtt_nanoseconds_bucket[5m])) by (le))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
       "id": 3,
       "type": "timeseries",
-      "title": "RTT Mean by Probe Type",
-      "gridPos": {"x": 0, "y": 4, "w": 24, "h": 8},
+      "title": "各探测类型平均延迟",
+      "gridPos": {"x": 0, "y": 8, "w": 24, "h": 8},
       "targets": [
         {
           "expr": "sum(increase(rpingmesh_nwrtt_nanoseconds_sum[5m])) by (probe_type) / sum(increase(rpingmesh_nwrtt_nanoseconds_count[5m])) by (probe_type)",
@@ -132,11 +258,11 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "Timeout Rate by Probe Type（次/分钟）",
-      "gridPos": {"x": 0, "y": 12, "w": 24, "h": 8},
+      "title": "各探测类型超时率（次/分钟）",
+      "gridPos": {"x": 0, "y": 16, "w": 24, "h": 8},
       "targets": [
         {
-          "expr": "sum(rate(rpingmesh_timeout_total[5m]) * 60) by (probe_type) or vector(0)",
+          "expr": "sum(rate(rpingmesh_timeout_total[5m]) * 60) by (probe_type)",
           "legendFormat": "{{probe_type}}",
           "refId": "A"
         }
@@ -170,8 +296,8 @@
     {
       "id": 5,
       "type": "table",
-      "title": "Top Destinations by Timeout",
-      "gridPos": {"x": 0, "y": 20, "w": 24, "h": 8},
+      "title": "超时最多的目标节点",
+      "gridPos": {"x": 0, "y": 24, "w": 24, "h": 8},
       "targets": [
         {
           "expr": "topk(5, sum(rate(rpingmesh_timeout_total[5m]) * 60) by (dst_agent_id)) or vector(0)",
@@ -199,10 +325,56 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "dst_agent_id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Destination"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Timeouts/min"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #B"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "RTT (ns)"
+              }
+            ]
+          }
+        ]
       },
       "options": {
-        "showHeader": true
+        "showHeader": true,
+        "filterable": false,
+        "sortBy": [],
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "countRows": false,
+          "fields": "",
+          "calcs": []
+        }
       }
     }
   ],

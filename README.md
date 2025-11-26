@@ -39,7 +39,7 @@
      bash patch/apply_agent_telemetry_patch.sh
      ```
 
-   - 应用 Agent 连接恢复补丁，增强 Controller 连接稳定性（添加自动重连机制和连接状态检查，解决长时间运行后连接断开导致 targets 清空的问题）：
+   - 应用 Agent 连接恢复补丁，增强 Controller 连接稳定性（添加自动重连机制和连接状态检查，解决长时间运行后连接断开导致 targets 清空的问题，并在 Controller 重启或长时间不可用后自动触发重新注册，保证 pinglist 能够在服务端恢复后第一时间刷新）：
 
      ```bash
      bash patch/apply_agent_controller_client_patch.sh

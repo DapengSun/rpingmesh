@@ -11,7 +11,7 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "Agent Avg RTT (ns)",
+      "title": "Agent平均延迟",
       "datasource": null,
       "gridPos": {"x": 0, "y": 0, "w": 12, "h": 4},
       "fieldConfig": {
@@ -44,7 +44,7 @@
       },
       "targets": [
         {
-          "expr": "sum(increase(rpingmesh_nwrtt_nanoseconds_sum{src_agent_id=~\"$src_agent\"}[5m])) / sum(increase(rpingmesh_nwrtt_nanoseconds_count{src_agent_id=~\"$src_agent\"}[5m]))",
+          "expr": "(sum(rate(rpingmesh_nwrtt_nanoseconds_sum{src_agent_id=~\"$src_agent\"}[5m])) / sum(rate(rpingmesh_nwrtt_nanoseconds_count{src_agent_id=~\"$src_agent\"}[5m]))) and (sum(rate(rpingmesh_nwrtt_nanoseconds_count{src_agent_id=~\"$src_agent\"}[5m])) > 0)",
           "refId": "A"
         }
       ]
@@ -52,7 +52,7 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "Agent Timeouts per Minute（次/分钟）",
+      "title": "Agent每分钟超时次数",
       "datasource": null,
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 4},
       "fieldConfig": {
@@ -85,7 +85,7 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(rpingmesh_timeout_total{src_agent_id=~\"$src_agent\"}[5m])) * 60 or vector(0)",
+          "expr": "sum(rate(rpingmesh_timeout_total{src_agent_id=~\"$src_agent\"}[5m])) * 60",
           "refId": "A"
         }
       ]
@@ -93,12 +93,12 @@
     {
       "id": 3,
       "type": "timeseries",
-      "title": "RTT Mean by Destination",
+      "title": "各目标节点平均延迟",
       "datasource": null,
       "gridPos": {"x": 0, "y": 4, "w": 24, "h": 8},
       "targets": [
         {
-          "expr": "sum(increase(rpingmesh_nwrtt_nanoseconds_sum{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id) / sum(increase(rpingmesh_nwrtt_nanoseconds_count{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id)",
+          "expr": "(sum(rate(rpingmesh_nwrtt_nanoseconds_sum{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id) / sum(rate(rpingmesh_nwrtt_nanoseconds_count{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id)) and (sum(rate(rpingmesh_nwrtt_nanoseconds_count{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id) > 0)",
           "legendFormat": "{{dst_agent_id}}",
           "refId": "A"
         }
@@ -131,12 +131,12 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "Timeout Rate by Destination（次/分钟）",
+      "title": "各目标节点超时率（次/分钟）",
       "datasource": null,
       "gridPos": {"x": 0, "y": 12, "w": 24, "h": 8},
       "targets": [
         {
-          "expr": "sum(rate(rpingmesh_timeout_total{src_agent_id=~\"$src_agent\"}[5m]) * 60) by (dst_agent_id) or vector(0)",
+          "expr": "sum(rate(rpingmesh_timeout_total{src_agent_id=~\"$src_agent\"}[5m]) * 60) by (dst_agent_id)",
           "legendFormat": "{{dst_agent_id}}",
           "refId": "A"
         }
@@ -170,19 +170,19 @@
     {
       "id": 5,
       "type": "table",
-      "title": "Destination Summary",
+      "title": "目标节点汇总",
       "datasource": null,
       "gridPos": {"x": 0, "y": 20, "w": 24, "h": 8},
       "targets": [
         {
-          "expr": "topk(5, sum(increase(rpingmesh_nwrtt_nanoseconds_sum{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id) / sum(increase(rpingmesh_nwrtt_nanoseconds_count{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id)) / 1e6",
+          "expr": "topk(5, (sum(rate(rpingmesh_nwrtt_nanoseconds_sum{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id) / sum(rate(rpingmesh_nwrtt_nanoseconds_count{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id)) and (sum(rate(rpingmesh_nwrtt_nanoseconds_count{src_agent_id=~\"$src_agent\"}[5m])) by (dst_agent_id) > 0)) / 1e6",
           "format": "table",
           "instant": true,
           "legendFormat": "{{dst_agent_id}} rtt",
           "refId": "A"
         },
         {
-          "expr": "topk(5, sum(rate(rpingmesh_timeout_total{src_agent_id=~\"$src_agent\"}[5m]) * 60) by (dst_agent_id)) or vector(0)",
+          "expr": "topk(5, sum(rate(rpingmesh_timeout_total{src_agent_id=~\"$src_agent\"}[5m]) * 60) by (dst_agent_id))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{dst_agent_id}} timeouts",
@@ -206,11 +206,39 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "dst_agent_id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "目标节点"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "平均延迟 (ms)"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "Value #B"
             },
             "properties": [
               {"id": "unit", "value": "short"},
               {"id": "decimals", "value": 2},
+              {
+                "id": "displayName",
+                "value": "超时次数/分钟"
+              },
               {
                 "id": "thresholds",
                 "value": {
@@ -228,6 +256,48 @@
       },
       "options": {
         "showHeader": true,
+        "filterable": false,
+        "sortBy": [],
+        "footer": {
+          "show": false,
+          "countRows": false,
+          "fields": "",
+          "calcs": []
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "最近5分钟 RTT 指标样本",
+      "datasource": null,
+      "gridPos": {"x": 0, "y": 28, "w": 24, "h": 12},
+      "targets": [
+        {
+          "expr": "rate(rpingmesh_nwrtt_nanoseconds_sum{src_agent_id=~\"$src_agent\"}[5m]) * 300",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null}
+            ]
+          },
+          "unit": "ns",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "filterable": false,
+        "sortBy": [],
         "footer": {
           "show": false,
           "countRows": false,
