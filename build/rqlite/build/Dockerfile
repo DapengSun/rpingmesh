@@ -26,10 +26,12 @@ ENV BUILD_UID=${BUILD_UID} \
 RUN groupadd -g ${BUILD_GID} ${BUILD_GROUP} && \
     useradd -m -u ${BUILD_UID} -g ${BUILD_GID} -s /bin/bash -d ${BUILD_HOME} ${BUILD_USER}
 
-RUN wget -O /tmp/rqlite.tar.gz https://github.com/rqlite/rqlite/releases/download/v8.37.0/rqlite-v8.37.0-linux-amd64.tar.gz && \
+ARG RQLITE_VERSION=8.37.0
+ARG RQLITE_ARCH=linux-amd64
+RUN wget -O /tmp/rqlite.tar.gz "https://github.com/rqlite/rqlite/releases/download/v${RQLITE_VERSION}/rqlite-v${RQLITE_VERSION}-${RQLITE_ARCH}.tar.gz" && \
     tar -xzf /tmp/rqlite.tar.gz -C /tmp && \
-    cp /tmp/rqlite-v8.37.0-linux-amd64/rqlited /usr/local/bin/ && \
-    cp /tmp/rqlite-v8.37.0-linux-amd64/rqlite /usr/local/bin/ && \
+    cp /tmp/rqlite-v${RQLITE_VERSION}-${RQLITE_ARCH}/rqlited /usr/local/bin/ && \
+    cp /tmp/rqlite-v${RQLITE_VERSION}-${RQLITE_ARCH}/rqlite /usr/local/bin/ && \
     rm -rf /tmp/rqlite* && \
     chmod +x /usr/local/bin/rqlited /usr/local/bin/rqlite
 

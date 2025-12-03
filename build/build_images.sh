@@ -5,6 +5,9 @@ set -e
 
 BUILD_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
+# 加载架构配置
+source "${BUILD_ROOT}/build-common.sh"
+
 BUILD_TARGET="all"
 BUILD_UID=${BUILD_UID:-1003}
 BUILD_GID=${BUILD_GID:-1003}
@@ -13,6 +16,23 @@ while [ $# -gt 0 ]; do
     case "$1" in
         all|agent|controller|rqlite|analyzer|otel-collector|prometheus|simulator|grafana)
             BUILD_TARGET="$1"
+            shift
+            ;;
+        --arch)
+            if [ -n "${2:-}" ]; then
+                export TARGET_ARCH="$2"
+                # 重新加载架构配置
+                source "${BUILD_ROOT}/build-common.sh"
+                shift 2
+            else
+                echo "错误: --arch 需要一个参数 (amd64|arm64)" >&2
+                exit 1
+            fi
+            ;;
+        --arch=*)
+            export TARGET_ARCH="${1#*=}"
+            # 重新加载架构配置
+            source "${BUILD_ROOT}/build-common.sh"
             shift
             ;;
         --uid)
@@ -43,13 +63,20 @@ while [ $# -gt 0 ]; do
             ;;
         *)
             echo "未知参数: $1" >&2
-            echo "用法: $0 [构建目标] [--uid UID] [--gid GID]" >&2
+            echo "用法: $0 [构建目标] [--arch ARCH] [--uid UID] [--gid GID]" >&2
             exit 1
             ;;
     esac
 done
 
 export BUILD_UID BUILD_GID
+
+# 显示架构信息
+echo "=================================================="
+echo "目标架构: ${TARGET_ARCH}"
+echo "Docker 平台: ${DOCKER_PLATFORM}"
+echo "Go 架构: ${GO_ARCH}"
+echo "=================================================="
 
 build_agent() {
     echo "构建Agent镜像..."

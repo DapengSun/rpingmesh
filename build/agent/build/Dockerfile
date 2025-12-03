@@ -37,9 +37,9 @@ RUN groupadd -g ${BUILD_GID} ${BUILD_GROUP} && \
     useradd -m -u ${BUILD_UID} -g ${BUILD_GID} -s /bin/bash -d ${BUILD_HOME} ${BUILD_USER}
 
 # Install grpcurl for gRPC testing
-RUN GRPCURL_VERSION="1.8.9" && \
-    GRPCURL_ARCH="linux_x86_64" && \
-    wget -q "https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_${GRPCURL_ARCH}.tar.gz" -O /tmp/grpcurl.tar.gz && \
+ARG GRPCURL_VERSION=1.8.9
+ARG GRPCURL_ARCH=linux_x86_64
+RUN wget -q "https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_${GRPCURL_ARCH}.tar.gz" -O /tmp/grpcurl.tar.gz && \
     tar -xzf /tmp/grpcurl.tar.gz -C /tmp && \
     mv /tmp/grpcurl /usr/local/bin/grpcurl && \
     chmod +x /usr/local/bin/grpcurl && \

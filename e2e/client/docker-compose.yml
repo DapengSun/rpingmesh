@@ -18,37 +18,3 @@ services:
        soft: -1
        hard: -1
     restart: unless-stopped
-
-  agent-simulator:
-    image: rpingmesh-agent-simulator:latest
-    container_name: rpingmesh-agent-simulator
-    network_mode: host
-    environment:
-      - SIMULATION_WORKER=tor-peer
-    volumes:
-      - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/simulator/tor-peer:/private/rpingmesh/simulator
-      - ./client_config/simulator.yaml:/mnt/config-source/simulator.yaml:ro
-    restart: unless-stopped
-
-  agent-simulator-inter:
-    image: rpingmesh-agent-simulator:latest
-    container_name: rpingmesh-agent-simulator-inter
-    network_mode: host
-    environment:
-      - SIMULATION_WORKER=inter-tor
-    volumes:
-      - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/simulator/inter-tor:/private/rpingmesh/simulator
-      - ./client_config/simulator.yaml:/mnt/config-source/simulator.yaml:ro
-    restart: unless-stopped
-
-  agent-simulator-cross:
-    image: rpingmesh-agent-simulator:latest
-    container_name: rpingmesh-agent-simulator-cross
-    network_mode: host
-    environment:
-      - SIMULATION_WORKER=cross-az
-    volumes:
-      - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/simulator/cross-az:/private/rpingmesh/simulator
-      - ./client_config/simulator.yaml:/mnt/config-source/simulator.yaml:ro
-    restart: unless-stopped
-
