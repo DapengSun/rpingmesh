@@ -16,3 +16,6 @@ pkg/ebpf/rdmaTracing.o
 # SpecStory explanation file
 .specstory
 /docs/troubleshooting/
+
+.idea
+.DS_Store
