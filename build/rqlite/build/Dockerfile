@@ -1,0 +1,72 @@
+FROM ubuntu:22.04
+
+RUN sed -i 's/archive.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
+    sed -i 's/security.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
+    apt-get update && apt-get install -y --fix-missing \
+    wget \
+    ca-certificates \
+    supervisor \
+    openssh-server \
+    bash \
+    vim \
+    net-tools \
+    iputils-ping \
+    curl \
+    htop \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG BUILD_UID=2133
+ARG BUILD_GID=2015
+ENV BUILD_UID=${BUILD_UID} \
+    BUILD_GID=${BUILD_GID} \
+    BUILD_USER=rpingmesh \
+    BUILD_GROUP=rpingmesh \
+    BUILD_HOME=/home/rpingmesh
+
+RUN groupadd -g ${BUILD_GID} ${BUILD_GROUP} && \
+    useradd -m -u ${BUILD_UID} -g ${BUILD_GID} -s /bin/bash -d ${BUILD_HOME} ${BUILD_USER}
+
+ARG RQLITE_VERSION=8.37.0
+ARG RQLITE_ARCH=linux-amd64
+RUN wget -O /tmp/rqlite.tar.gz "https://github.com/rqlite/rqlite/releases/download/v${RQLITE_VERSION}/rqlite-v${RQLITE_VERSION}-${RQLITE_ARCH}.tar.gz" && \
+    tar -xzf /tmp/rqlite.tar.gz -C /tmp && \
+    cp /tmp/rqlite-v${RQLITE_VERSION}-${RQLITE_ARCH}/rqlited /usr/local/bin/ && \
+    cp /tmp/rqlite-v${RQLITE_VERSION}-${RQLITE_ARCH}/rqlite /usr/local/bin/ && \
+    rm -rf /tmp/rqlite* && \
+    chmod +x /usr/local/bin/rqlited /usr/local/bin/rqlite
+
+RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d /var/run/sshd
+
+RUN echo 'root:rpingmesh' | chpasswd && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#Port 22/Port 22/' /etc/ssh/sshd_config && \
+    echo 'Port 22' >> /etc/ssh/sshd_config && \
+    echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config && \
+    echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config
+
+# Note: WORKDIR is not set to /data here to avoid conflicts with volume mounts
+# The start.sh script will handle /data directory setup
+WORKDIR /root
+
+COPY supervisord.conf /etc/supervisor/supervisord.conf
+COPY rqlite.conf /etc/supervisor/conf.d/rqlite.conf
+
+RUN echo '#!/bin/bash' > /etc/init.d/ssh-start && \
+    echo 'echo "启动SSH服务..."' >> /etc/init.d/ssh-start && \
+    echo '/usr/sbin/sshd -D &' >> /etc/init.d/ssh-start && \
+    echo 'echo "SSH服务已启动，端口22"' >> /etc/init.d/ssh-start && \
+    echo 'echo "SSH登录: ssh root@<container_ip> -p 22"' >> /etc/init.d/ssh-start && \
+    echo 'echo "密码: rpingmesh"' >> /etc/init.d/ssh-start && \
+    chmod +x /etc/init.d/ssh-start
+
+COPY start.sh /usr/local/bin/start.sh
+COPY status.sh /usr/local/bin/status.sh
+
+RUN chmod +x /usr/local/bin/start.sh /usr/local/bin/status.sh
+
+EXPOSE 4001 4002 22
+
+ENV NODE_ID=rqlite-node
+
+ENTRYPOINT ["/usr/local/bin/start.sh"]

@@ -1,0 +1,148 @@
+services:
+  # RQLite database - used by Controller for RNIC registry storage
+  rqlite:
+    image: rpingmesh-rqlite:latest
+    container_name: rpingmesh-rqlite-server
+    ports:
+      - "4001:4001"
+      - "4002:4002"
+      - "2222:22"
+    environment:
+      - NODE_ID=10.244.0.10
+      - HTTP_ADDR=0.0.0.0:4001
+      - RAFT_ADDR=0.0.0.0:4002
+    networks:
+      rpingmesh-network:
+        ipv4_address: 10.244.0.10
+        aliases:
+          - rqlite
+    volumes:
+      - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/rqlite:/private/rpingmesh/rqlite
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4001/status | grep -q '\"ready\":true' || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # Controller service
+  controller:
+    image: rpingmesh-controller:latest
+    container_name: rpingmesh-controller-server
+    depends_on:
+      rqlite:
+        condition: service_healthy
+    ports:
+      - "50051:50051"
+    networks:
+      rpingmesh-network:
+        ipv4_address: 10.244.0.20
+    extra_hosts:
+      rqlite: 10.244.0.10
+    volumes:
+      - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/controller:/private/rpingmesh/controller
+      - ./server_config/controller.yaml:/mnt/config-source/controller.yaml:ro
+    command: --config /app/config/controller.yaml
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-zv", "localhost", "50051"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Analyzer service
+  analyzer:
+    image: rpingmesh-analyzer:latest
+    container_name: rpingmesh-analyzer-server
+    depends_on:
+      rqlite:
+        condition: service_healthy
+    ports:
+      - "50052:50052"
+    networks:
+      rpingmesh-network:
+        ipv4_address: 10.244.0.30
+    extra_hosts:
+        rqlite: 10.244.0.10
+    volumes:
+      - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/analyzer:/private/rpingmesh/analyzer
+      - ./server_config/analyzer.yaml:/mnt/config-source/analyzer.yaml:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-zv", "localhost", "50052"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # OpenTelemetry Collector service
+  otel-collector:
+    image: rpingmesh-otel-collector:latest
+    container_name: rpingmesh-otel-collector-server
+    ports:
+      - "4317:4317"
+    networks:
+      rpingmesh-network:
+        ipv4_address: 10.244.0.40
+    volumes:
+      - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/otel-collector:/private/rpingmesh/otel-collector
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-zv", "localhost", "4317"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Prometheus service
+  prometheus:
+    image: rpingmesh-prometheus:latest
+    container_name: rpingmesh-prometheus-server
+    depends_on:
+      otel-collector:
+        condition: service_started
+    ports:
+      - "9091:9090"
+    networks:
+      rpingmesh-network:
+        ipv4_address: 10.244.0.50
+    volumes:
+      - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/prometheus:/private/rpingmesh/prometheus
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-zv", "localhost", "9090"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # Grafana service
+  grafana:
+    image: rpingmesh-grafana:latest
+    container_name: rpingmesh-grafana-server
+    depends_on:
+      prometheus:
+        condition: service_started
+    ports:
+      - "3000:3000"
+    networks:
+      rpingmesh-network:
+        ipv4_address: 10.244.0.60
+    volumes:
+      - ${RPINGMESH_DATA_DIR:-./data_dir}/rpingmesh/grafana:/private/rpingmesh/grafana
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-zv", "localhost", "3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+networks:
+  rpingmesh-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.244.0.0/24

@@ -1,0 +1,16 @@
+simulation:
+  enabled: false
+  otel-addr: grpc://58.206.206.38:4317
+  workers:
+    - name: tor-peer
+      profile: tor-mesh
+      agent-id: sim-agent-tor
+      enabled: false
+    - name: inter-tor
+      profile: inter-tor
+      agent-id: sim-agent-inter
+      enabled: false
+    - name: cross-az
+      profile: cross-az
+      agent-id: sim-agent-cross
+      enabled: false

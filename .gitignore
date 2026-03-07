@@ -17,5 +17,40 @@ pkg/ebpf/rdmaTracing.o
 .specstory
 /docs/troubleshooting/
 
-.idea
+.vscode/
+.idea/
 .DS_Store
+
+# Go build outputs
+bin/
+tmp/
+*.test
+*.out
+
+# eBPF generated artifacts (mirrors submodule ignores)
+src/rpingmesh/pkg/ebpf/bpf/include/vmlinux.h
+src/rpingmesh/pkg/ebpf/rdmaTracing_*.go
+src/rpingmesh/pkg/ebpf/rdmaTracing.o
+
+# Build system outputs
+build/agent/build/agent
+build/analyzer/build/analyzer
+build/controller/build/controller
+build/simulator/build/simulator
+build/*/build/*.log
+
+# Docker image archives
+images
+images_*
+
+# E2E runtime data
+e2e/**/data_dir/
+e2e/**/.env
+
+# Misc tooling
+.specstory
+
+/exp/
+
+/artifact/
+/debugger/

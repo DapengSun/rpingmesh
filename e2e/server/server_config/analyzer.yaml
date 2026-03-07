@@ -1,0 +1,5 @@
+# R-Pingmesh Analyzer Configuration for E2E Testing
+listen-addr: "0.0.0.0:50052"
+database-uri: "http://10.244.0.10:4001"
+log-level: "info"  # debug, info, warn, error
+
