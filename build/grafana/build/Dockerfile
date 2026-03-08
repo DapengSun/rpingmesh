@@ -21,7 +21,8 @@ RUN apk add --no-cache \
         net-tools \
         iputils \
         vim \
-        bash
+        bash \
+        unzip
 
 # supervisor 日志目录
 RUN mkdir -p /var/log/supervisor
@@ -41,6 +42,12 @@ RUN mkdir -p ${GRAFANA_BASE_PATH}/data \
     && mkdir -p ${GRAFANA_BASE_PATH}/provisioning/dashboards \
     && mkdir -p ${GRAFANA_BASE_PATH}/config \
     && chown -R ${BUILD_UID}:${BUILD_GID} ${GRAFANA_BASE_PATH}
+
+# 离线安装 esnet-matrix-panel 插件
+COPY plugins/esnet-matrix-panel-2.0.1.zip /tmp/esnet-matrix-panel.zip
+RUN unzip -q /tmp/esnet-matrix-panel.zip -d ${GF_PATHS_PLUGINS} \
+    && rm /tmp/esnet-matrix-panel.zip \
+    && chown -R ${BUILD_UID}:${BUILD_GID} ${GF_PATHS_PLUGINS}
 
 # 复制配置文件到容器内临时位置
 COPY grafana.ini /tmp/grafana.ini

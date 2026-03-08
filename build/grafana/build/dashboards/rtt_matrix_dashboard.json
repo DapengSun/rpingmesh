@@ -1,0 +1,171 @@
+{
+  "id": null,
+  "uid": "rtt-nic-matrix",
+  "title": "RDMA RTT NIC 矩阵",
+  "timezone": "browser",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["rpingmesh", "matrix", "rtt"],
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "esnet-matrix-panel",
+      "title": "RDMA RTT 网卡矩阵 (行=源网卡, 列=目标网卡, 颜色=平均RTT)",
+      "datasource": null,
+      "gridPos": {"x": 0, "y": 0, "w": 24, "h": 20},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ns",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 5000},
+              {"color": "orange", "value": 50000},
+              {"color": "red", "value": 1000000}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "srcField": "src_nic",
+        "dstField": "dst_nic",
+        "valueField": "Value",
+        "srcText": "源网卡 (src)",
+        "dstText": "目标网卡 (dst)",
+        "valueText": "平均 RTT",
+        "cellSize": 32,
+        "cellPadding": 2,
+        "textLength": 30,
+        "textSize": 11,
+        "showLegend": true,
+        "legendType": "range",
+        "nullColor": "green",
+        "noDataColor": "green"
+      },
+      "targets": [
+        {
+          "datasource": null,
+          "expr": "label_join(label_join((sum(rate(rpingmesh_nwrtt_nanoseconds_sum[5m])) by (src_hostname, src_device_name, dst_hostname, dst_device_name) / (sum(rate(rpingmesh_nwrtt_nanoseconds_count[5m])) by (src_hostname, src_device_name, dst_hostname, dst_device_name) > 0)) or (sum(rpingmesh_nwrtt_nanoseconds_count) by (src_hostname, src_device_name, dst_hostname, dst_device_name) * 0 + 2000), \"src_nic\", \"/\", \"src_hostname\", \"src_device_name\"), \"dst_nic\", \"/\", \"dst_hostname\", \"dst_device_name\")",
+          "instant": true,
+          "format": "table",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": ["src_nic", "dst_nic", "Value"]
+            }
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "Value",
+            "renamePattern": "RTT (ns)"
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "esnet-matrix-panel",
+      "title": "RDMA RTT NIC 矩阵 - P99 延迟 (行=源网卡, 列=目标网卡)",
+      "datasource": null,
+      "gridPos": {"x": 0, "y": 20, "w": 24, "h": 20},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ns",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 10000},
+              {"color": "orange", "value": 100000},
+              {"color": "red", "value": 1000000}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "srcField": "src_nic",
+        "dstField": "dst_nic",
+        "valueField": "Value",
+        "srcText": "源网卡 (src)",
+        "dstText": "目标网卡 (dst)",
+        "valueText": "P99 RTT",
+        "cellSize": 32,
+        "cellPadding": 2,
+        "textLength": 30,
+        "textSize": 11,
+        "showLegend": true,
+        "legendType": "range",
+        "nullColor": "green",
+        "noDataColor": "green"
+      },
+      "targets": [
+        {
+          "datasource": null,
+          "expr": "label_join(label_join((histogram_quantile(0.99, sum(rate(rpingmesh_nwrtt_nanoseconds_bucket[5m])) by (le, src_hostname, src_device_name, dst_hostname, dst_device_name)) and (sum(rate(rpingmesh_nwrtt_nanoseconds_count[5m])) by (src_hostname, src_device_name, dst_hostname, dst_device_name) > 0)) or (sum(rpingmesh_nwrtt_nanoseconds_count) by (src_hostname, src_device_name, dst_hostname, dst_device_name) * 0 + 2000), \"src_nic\", \"/\", \"src_hostname\", \"src_device_name\"), \"dst_nic\", \"/\", \"dst_hostname\", \"dst_device_name\")",
+          "instant": true,
+          "format": "table",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": ["src_nic", "dst_nic", "Value"]
+            }
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "Value",
+            "renamePattern": "P99 RTT (ns)"
+          }
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "probe_type",
+        "type": "query",
+        "label": "Probe 类型",
+        "datasource": null,
+        "query": "label_values(rpingmesh_nwrtt_nanoseconds_count, probe_type)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": "",
+        "multi": false,
+        "current": {},
+        "options": [],
+        "hide": 0
+      }
+    ]
+  },
+  "time": {"from": "now-1h", "to": "now"},
+  "description": "展示所有 RDMA 网卡之间的 RTT 延迟矩阵。行为源网卡（机器名/网卡名），列为目标网卡。颜色越绿表示延迟越低，越红表示延迟越高。"
+}
