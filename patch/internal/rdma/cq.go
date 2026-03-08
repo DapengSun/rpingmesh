@@ -412,7 +412,35 @@ func (u *UDQueue) handleSendCompletion(gwc *GoWorkCompletion) {
 		Uint32("src_qp", gwc.SrcQP).
 		Uint32("wc_flags", gwc.WCFlags).
 		Uint64("hw_ts_ns", gwc.CompletionWallclockNS).
+		Uint64("wrid", gwc.WRID).
 		Msg("IBV_WC_SEND")
+
+	// Try per-WR-ID channel first (registered by waitForSendCompletion).
+	// LoadAndDelete ensures each WC is delivered exactly once.
+	// If the caller already timed out, it left the entry in the map intentionally;
+	// we send to the buffered channel (cap=1) so it is absorbed without blocking,
+	// and the channel is GC'd once there are no more references.
+	if val, ok := u.pendingSendChans.LoadAndDelete(gwc.WRID); ok {
+		ch := val.(chan *GoWorkCompletion)
+		select {
+		case ch <- gwc:
+			log.Trace().
+				Str("qpn", fmt.Sprintf("0x%x", u.QPN)).
+				Uint64("wrid", gwc.WRID).
+				Msg("Send completion delivered to per-WR-ID channel")
+		default:
+			// buffer=1 already full: caller timed out AND another completion arrived
+			// for the same WR-ID (shouldn't happen in normal operation). Discard safely.
+			log.Warn().
+				Str("qpn", fmt.Sprintf("0x%x", u.QPN)).
+				Uint64("wrid", gwc.WRID).
+				Msg("per-WR-ID send channel full, discarding completion (caller timed out)")
+		}
+		return
+	}
+
+	// Fallback: send to the shared channel for callers that do not use
+	// waitForSendCompletion (e.g. SendProbePacket with its own ctx-based select).
 	select {
 	case u.sendCompChan <- gwc:
 	default:
