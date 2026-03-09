@@ -19,36 +19,40 @@
         "defaults": {
           "unit": "ns",
           "decimals": 0,
+          "min": 2000,
+          "max": 10000,
           "color": {
             "mode": "thresholds"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 5000},
-              {"color": "orange", "value": 50000},
-              {"color": "red", "value": 1000000}
+              {"color": "green",   "value": null},
+              {"color": "green",   "value": 2000},
+              {"color": "#9DC300", "value": 4000},
+              {"color": "#FADE2A", "value": 6000},
+              {"color": "#FF780A", "value": 8000},
+              {"color": "#E02F44", "value": 10000}
             ]
           }
         },
         "overrides": []
       },
       "options": {
-        "srcField": "src_nic",
-        "dstField": "dst_nic",
+        "sourceField": "src_nic",
+        "targetField": "dst_nic",
         "valueField": "Value",
-        "srcText": "源网卡 (src)",
-        "dstText": "目标网卡 (dst)",
+        "sourceText": "源网卡 (src)",
+        "targetText": "目标网卡 (dst)",
         "valueText": "平均 RTT",
         "cellSize": 32,
         "cellPadding": 2,
-        "textLength": 30,
-        "textSize": 11,
+        "txtLength": 30,
+        "txtSize": 11,
         "showLegend": true,
         "legendType": "range",
-        "nullColor": "green",
-        "noDataColor": "green"
+        "nullColor": "#73BF69",
+        "defaultColor": "#73BF69"
       },
       "targets": [
         {
@@ -88,36 +92,40 @@
         "defaults": {
           "unit": "ns",
           "decimals": 0,
+          "min": 2000,
+          "max": 10000,
           "color": {
             "mode": "thresholds"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 10000},
-              {"color": "orange", "value": 100000},
-              {"color": "red", "value": 1000000}
+              {"color": "green",   "value": null},
+              {"color": "green",   "value": 2000},
+              {"color": "#9DC300", "value": 4000},
+              {"color": "#FADE2A", "value": 6000},
+              {"color": "#FF780A", "value": 8000},
+              {"color": "#E02F44", "value": 10000}
             ]
           }
         },
         "overrides": []
       },
       "options": {
-        "srcField": "src_nic",
-        "dstField": "dst_nic",
+        "sourceField": "src_nic",
+        "targetField": "dst_nic",
         "valueField": "Value",
-        "srcText": "源网卡 (src)",
-        "dstText": "目标网卡 (dst)",
+        "sourceText": "源网卡 (src)",
+        "targetText": "目标网卡 (dst)",
         "valueText": "P99 RTT",
         "cellSize": 32,
         "cellPadding": 2,
-        "textLength": 30,
-        "textSize": 11,
+        "txtLength": 30,
+        "txtSize": 11,
         "showLegend": true,
         "legendType": "range",
-        "nullColor": "green",
-        "noDataColor": "green"
+        "nullColor": "#73BF69",
+        "defaultColor": "#73BF69"
       },
       "targets": [
         {
