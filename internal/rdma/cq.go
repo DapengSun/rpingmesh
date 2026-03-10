@@ -395,15 +395,31 @@ func (u *UDQueue) handleRecvCompletion(gwc *GoWorkCompletion) bool { // Returns 
 			Msg("Non-ACK packet or no handler/responder queue, sending to recvCompChan")
 		select {
 		case u.recvCompChan <- gwc:
+			// Slot will be reposted by ReceivePacket after it processes the packet data.
 		default:
 			log.Warn().
 				Str("qpn", fmt.Sprintf("0x%x", u.QPN)).
 				Str("type", getQueueTypeString(u.QueueType)).
 				Int("slot", slot).
-				Msg("Receive completion channel full, dropping WC_RECV event. gwc will be freed.")
+				Msg("Receive completion channel full, dropping WC_RECV event. Reposting recv buffer to prevent RQ exhaustion.")
+			// Repost the recv buffer immediately so the RQ slot is never permanently lost.
+			if slot >= 0 && slot < u.NumRecvSlots {
+				if errPost := u.PostRecvSlot(slot); errPost != nil {
+					log.Error().Err(errPost).
+						Str("qpn", fmt.Sprintf("0x%x", u.QPN)).
+						Int("slot", slot).
+						Msg("Failed to repost recv buffer after channel drop")
+				}
+			} else {
+				if errPost := u.PostRecv(); errPost != nil {
+					log.Error().Err(errPost).
+						Str("qpn", fmt.Sprintf("0x%x", u.QPN)).
+						Msg("Failed to repost recv buffer after channel drop (fallback)")
+				}
+			}
 		}
 	}
-	return false // Non-ACK packet, PostRecv() should be called by caller
+	return true // Slot lifecycle is managed: deferred to ReceivePacket (sent) or reposted here (dropped).
 }
 
 func (u *UDQueue) handleSendCompletion(gwc *GoWorkCompletion) {

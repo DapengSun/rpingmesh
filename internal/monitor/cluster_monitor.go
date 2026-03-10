@@ -66,27 +66,29 @@ func (ps *ProbeScheduler) UpdateTargets(targets []probe.PingTarget, targetProbeR
 // This method blocks until a target is available according to the rate limiter
 func (ps *ProbeScheduler) GetNextTarget() *probe.PingTarget {
 	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
 
 	if len(ps.targets) == 0 {
+		ps.mutex.Unlock()
 		return nil
 	}
 
 	// Get the next target in round-robin fashion
-	target := &ps.targets[ps.currentIndex]
+	target := ps.targets[ps.currentIndex]
 	ps.currentIndex = (ps.currentIndex + 1) % len(ps.targets)
 
 	// Get the rate limiter for this target
 	limiter, exists := ps.targetLimiters[target.GID]
+	ps.mutex.Unlock() // Release before the blocking rate-limiter call
+
 	if !exists {
 		// This shouldn't happen if UpdateTargets was called properly
 		log.Warn().Str("target_gid", target.GID).Msg("No rate limiter found for target GID")
-		return target // Return anyway to avoid infinite loop
+		return &target // Return anyway to avoid infinite loop
 	}
 
-	// Take from the rate limiter (this will block until allowed)
+	// Take from the rate limiter (this will block until allowed, outside the mutex)
 	limiter.Take()
-	return target
+	return &target
 }
 
 // GetTargetCount returns the number of targets
@@ -311,7 +313,11 @@ func (c *ClusterMonitor) processNextProbe() {
 	// Get the next target - this will block until a target is available according to rate limiting
 	target := c.scheduler.GetNextTarget()
 	if target == nil {
-		// No targets configured, return immediately
+		// No targets configured; sleep briefly to avoid a CPU-burning busy spin.
+		select {
+		case <-c.stopCh:
+		case <-time.After(100 * time.Millisecond):
+		}
 		return
 	}
 
