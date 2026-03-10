@@ -1,8 +1,10 @@
 {
-  "enableAllProjectMcpServers": false,
   "permissions": {
     "allow": [
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(git checkout:*)",
+      "Bash(git:*)"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": false
 }

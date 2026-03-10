@@ -7,104 +7,101 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Building
 - `make build-local` - Build binaries locally (requires Go 1.24.3+, clang, libbpf-dev)
 - `make build-debug` - Build debug versions with debug symbols
-- `make build-controller` - Build controller with Docker
-- `make build-agent` - Build agent with Docker
+- `make build-controller` / `make build-agent` - Build individual components with Docker
 
 ### Testing
-- `make test-local` - Run Go tests locally (sets RQLITE_LOCAL_TEST_URI)
-- `make test` - Run all tests in Docker containers
-- `make test-controller` - Run controller tests only
-- `make test-agent` - Run agent tests only
-- `go test ./...` - Run tests directly with Go
-- `go test -v ./internal/rdma -run TestDeviceInit` - Run specific test
+- `make test-local` - Run Go tests locally (requires rqlite running, sets `RQLITE_LOCAL_TEST_URI`)
+- `make test` / `make test-controller` / `make test-agent` - Run tests in Docker containers
+- `go test -v ./internal/rdma -run TestDeviceInit` - Run a specific test
 
 ### Code Generation
 - `make generate` - Generate all code (protobuf + eBPF)
-- `make generate-proto` - Generate protobuf bindings only
-- `make generate-bpf` - Generate eBPF bindings only
-- `go generate ./...` - Alternative generation command
+- `make generate-proto` / `make generate-bpf` - Generate individually
+
+### Formatting & Linting
+- `gofumpt` (stricter gofmt, v0.7.0) and `staticcheck` (v0.5.1) are in go.mod as tools
+- No `.golangci.yml` — use `gofumpt -w .` and `staticcheck ./...` directly
 
 ### Docker Development
 - `make agent-up` - Start agent container
 - `make debugfs-volume` - Create debugfs volume for Docker Desktop
-- `make generate-config` - Generate default configuration files
+- `make generate-config` - Generate default `agent.yaml`
 - `make clean-compose` - Clean Docker Compose resources
 
 ## Architecture
 
-R-Pingmesh is a service-aware RoCE network monitoring and diagnostic system based on end-to-end probing with three core components:
+R-Pingmesh is a service-aware RoCE network monitoring system using end-to-end RDMA probing with three distributed components:
 
-**Agent**: Deployed on RDMA hosts, performs probing and eBPF tracing. Manages RDMA devices, executes network probes, and monitors kernel RDMA events via eBPF ServiceTracer.
+**Agent** — deployed on RDMA hosts. Discovers local RNICs, registers with controller, receives pinglists, executes probes, collects eBPF-traced service flows, uploads results to analyzer.
 
-**Controller**: Central coordination service that manages agent registry and distributes pinglists (target assignments). Stores agent/RNIC information in rqlite.
+**Controller** — central coordination. Maintains RNIC registry in rqlite, distributes pinglists (target assignments) to agents on demand.
 
-**Analyzer**: Data aggregation service that receives probe results and path information from agents for network performance analysis.
+**Analyzer** — receives probe results and traceroute paths from agents for performance analysis.
 
-### Communication Flow
-- Controller ↔ Agent: gRPC for registration, pinglist distribution (`controller_agent.proto`)
-- Agent → Analyzer: gRPC for probe data upload (`agent_analyzer.proto`)
-- eBPF programs trace RDMA QP lifecycle events in kernel space
+### Communication
+- Controller ↔ Agent: gRPC (`proto/controller_agent/`)
+- Agent → Analyzer: gRPC (`proto/agent_analyzer/`)
+- Controller gRPC methods: `RegisterAgent`, `GetPinglist`, `GetTargetRnicInfo`
+- Analyzer gRPC method: `UploadData`
 
-### Key Packages
-- `internal/ebpf/` - eBPF ServiceTracer for RDMA event monitoring
-  - `rdma_tracing.go` - Main eBPF tracer implementation
-  - `bpf/rdma_tracing.c` - eBPF C code for kernel tracing
-- `internal/agent/` - Agent implementation
-  - `serviceflowmonitor/` - Service flow monitoring with eBPF integration
-  - `controller_client/` - gRPC client for controller communication
-  - `telemetry/` - OpenTelemetry metrics collection
-- `internal/controller/` - Controller service
-  - `registry/` - Agent and RNIC registry management with rqlite
-  - `pinglist/` - Target assignment and distribution
-- `internal/analyzer/` - Analyzer service
-  - `analysis/` - Network performance analysis engine
-  - `storage/` - Data persistence layer
-- `internal/probe/` - RDMA probing infrastructure
-- `internal/rdma/` - RDMA device and queue management
-  - `device.go` - RNIC device discovery and management
-  - `queue.go` - UD Queue Pair operations
-  - `cq.go` - Completion Queue polling
-  - `packet.go` - Packet send/receive operations
-- `internal/config/` - Configuration structures for all components
-- `internal/monitor/` - Cluster monitoring implementation
+### Pinglist Types
+Agents request two pinglist types per RNIC:
+- `TOR_MESH` — all RNICs in the same ToR switch (network health within a rack)
+- `INTER_TOR` — sampled RNICs from other ToRs (inter-rack connectivity)
+
+Each `PingTarget` includes explicit source+destination RNIC info plus a generated 5-tuple (source port, flow label, priority).
+
+### Probe Lifecycle & Timestamps
+The 6-timestamp model per probe:
+- **T1** — prober sends packet
+- **T2** — responder receives packet
+- **T3** — responder sends ACK (Ack1)
+- **T4** — prober receives Ack1
+- **T5** — prober sends Ack2 (confirms receipt)
+- **T6** — responder receives Ack2
+
+Hardware CQE timestamps (nanosecond precision via extended CQ) are used where available. RTT = T4 - T1; prober delay = T4 - T3; responder delay = T3 - T2.
+
+### Rate Limiting Design
+Probing uses **per-target blocking rate limiting** via `uber-go/ratelimit` (`internal/monitor/cluster_monitor.go`):
+- Each unique destination GID has its own `ratelimit.Limiter` (created on first probe)
+- `ProbeScheduler.GetNextTarget()` calls `limiter.Take()` which blocks until the next allowed probe slot
+- `ratelimit.WithoutSlack` ensures predictable timing
+- Rate configured via `TargetProbeRatePerSecond` in agent config
+
+### eBPF Service Flow Discovery
+`internal/ebpf/ServiceTracer` attaches kprobes to `modify_qp` in the RDMA verbs kernel path. When a QP transitions to RTR state, the eBPF program extracts src/dst GID, src/dst QPN, and flow label via a ring buffer. `ServiceFlowMonitor` receives these events, resolves target RNIC info from the controller, and triggers targeted probes for discovered service flows.
+
+### Agent Startup Order
+`internal/agent/agent.go Start()` initializes components in this order:
+1. RDMA infrastructure (device discovery, UD queue pairs)
+2. Prober + ACK handler setup
+3. eBPF ServiceTracer + ServiceFlowMonitor
+4. Controller registration (gRPC `RegisterAgent`)
+5. OpenTelemetry metrics
+6. ClusterMonitor (probe scheduling with rate limiting)
+7. Path Tracer (traceroute on probe timeouts)
+8. Uploader (batches results to analyzer every ~10s)
+9. Background goroutines: `resultHandler` (channels to metrics + uploader), `pinglistUpdater` (polls controller every 300s)
+
+### Key Packages Beyond CLAUDE.md Defaults
+- `internal/tracer/` — traceroute path discovery, triggered async on probe timeouts
+- `internal/upload/` — batches probe results (`batchSize` default 1000) and uploads to analyzer
+- `internal/state/` — shared agent state across components
+- `internal/monitor/` — `ClusterMonitor` + `ProbeScheduler` with per-target rate limiters
 
 ## eBPF Development
 
-Uses `github.com/cilium/ebpf` package for eBPF programs. eBPF C code in `internal/ebpf/bpf/rdma_tracing.c` traces RDMA verbs operations. Build process generates Go bindings via `bpf2go`.
-
-Key requirements:
-- Linux kernel 5.4+ with eBPF support
-- CAP_BPF capability or root privileges
-- Kernel headers installed for compilation
+Uses `github.com/cilium/ebpf` package. C source in `internal/ebpf/bpf/rdma_tracing.c`; Go bindings generated by `bpf2go`. Requires Linux kernel 5.4+ with eBPF support, `CAP_BPF` or root, and kernel headers.
 
 ## Configuration
 
-All components use Viper for configuration with support for YAML files, environment variables, and command-line flags. Config structures in `internal/config/`.
+All components use Viper (YAML + env vars + flags). Config structs in `internal/config/`.
 
-Environment variables:
-- `RQLITE_DB_URI` - rqlite database connection for controller
-- `RQLITE_LOCAL_TEST_URI` - rqlite connection for local testing (default: http://localhost:4001)
-
-## Development Environment
-
-### DevContainer Support
-Project includes `.devcontainer/devcontainer.json` with pre-configured environment including Go, eBPF tools, RDMA libraries, and required extensions. Use with VS Code or GitHub Codespaces.
-
-### Local Development Requirements
-- Go 1.24.3+ with module support
-- eBPF: clang, libbpf-dev, kernel headers
-- RDMA: libibverbs-dev, librdmacm-dev
-- Protocol Buffers: protoc, protoc-gen-go, protoc-gen-go-grpc
-- Testing: testify framework
-- Rate limiting: uber-go/ratelimit
+Key environment variables:
+- `RQLITE_DB_URI` — rqlite connection for controller (production)
+- `RQLITE_LOCAL_TEST_URI` — rqlite connection for local testing (default: `http://localhost:4001`)
 
 ## Docker Requirements
 
-For eBPF functionality, containers need `--privileged` mode with capabilities: `SYS_ADMIN`, `NET_ADMIN`, `IPC_LOCK`, `CAP_BPF`. Debugfs mount required at `/sys/kernel/debug`.
-
-## Binary Locations
-
-Built binaries are placed in `./bin/`:
-- `rpingmesh-controller` - Controller service binary
-- `rpingmesh-agent` - Agent service binary
-- `rpingmesh-analyzer` - Analyzer service binary (when built)
+Containers require `--privileged` with capabilities `SYS_ADMIN`, `NET_ADMIN`, `IPC_LOCK`, `CAP_BPF`. Debugfs must be mounted at `/sys/kernel/debug`.
