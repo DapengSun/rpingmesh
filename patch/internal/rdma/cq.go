@@ -440,13 +440,22 @@ func (u *UDQueue) handleSendCompletion(gwc *GoWorkCompletion) {
 	}
 
 	// Fallback: send to the shared channel for callers that do not use
-	// waitForSendCompletion (e.g. SendProbePacket with its own ctx-based select).
+	// waitForSendCompletion. After the SendProbePacket fix, probe send completions
+	// should no longer reach this path (they register in pendingSendChans before
+	// posting). If this log appears frequently for probe WR-IDs, it indicates a
+	// registration-before-post ordering issue.
+	log.Debug().
+		Str("qpn", fmt.Sprintf("0x%x", u.QPN)).
+		Str("type", getQueueTypeString(u.QueueType)).
+		Uint64("wrid", gwc.WRID).
+		Msg("[cq_poller] send completion falling back to shared sendCompChan (WR-ID not in pendingSendChans)")
 	select {
 	case u.sendCompChan <- gwc:
 	default:
 		log.Warn().
 			Str("qpn", fmt.Sprintf("0x%x", u.QPN)).
 			Str("type", getQueueTypeString(u.QueueType)).
+			Uint64("wrid", gwc.WRID).
 			Msg("Send completion channel full, dropping WC_SEND event. gwc will be freed.")
 	}
 }
