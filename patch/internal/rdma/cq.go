@@ -64,6 +64,17 @@ type WorkCompletionEvent struct {
 	Timestamp      time.Time
 }
 
+// hwTimestampOrNow returns a time.Time from a hardware wallclock nanosecond value.
+// Falls back to time.Now() when wallclockNS is 0 (hardware timestamps unavailable),
+// preventing epoch-based timestamps from producing astronomical RTT values that overflow
+// Prometheus histogram buckets and appear as +Inf. See Issue #3 for details.
+func hwTimestampOrNow(wallclockNS uint64) time.Time {
+	if wallclockNS == 0 {
+		return time.Now()
+	}
+	return time.Unix(0, int64(wallclockNS))
+}
+
 // processCQCompletions polls for work completions and processes them.
 func (u *UDQueue) processCQCompletions(cqEx *C.struct_ibv_cq_ex) {
 	// ibv_start_poll was successful, so cqEx points to the first completion.
@@ -348,7 +359,7 @@ func (u *UDQueue) handleRecvCompletion(gwc *GoWorkCompletion) bool {
 
 		ackInfo := &IncomingAckInfo{
 			Packet:      &ppCopy, // Use the safe copy instead of pointer to slot buffer
-			ReceivedAt:  time.Unix(0, int64(gwc.CompletionWallclockNS)),
+			ReceivedAt:  hwTimestampOrNow(gwc.CompletionWallclockNS),
 			ProcessedWC: processedWCForAck,
 			AckStatusOK: gwc.Status == C.IBV_WC_SUCCESS, // Set AckStatusOK based on gwc.Status
 		}
@@ -547,19 +558,28 @@ func (u *UDQueue) StartCQPoller() {
 					log.Info().Str("qpn", fmt.Sprintf("0x%x", u.QPN)).Str("type", getQueueTypeString(u.QueueType)).Msg("CQ poller: ibv_get_cq_event failed during shutdown. Normal.")
 					return
 				default:
+					errNo := syscall.Errno(C.get_errno())
+					if errNo == syscall.EINTR {
+						// Signal interrupted the blocking call (e.g. SIGURG from Go runtime
+						// for goroutine preemption). This is transient; retry.
+						log.Debug().
+							Str("qpn", fmt.Sprintf("0x%x", u.QPN)).
+							Str("type", getQueueTypeString(u.QueueType)).
+							Msg("CQ poller: ibv_get_cq_event interrupted by signal (EINTR), retrying")
+						continue
+					}
 					log.Error().
 						Str("qpn", fmt.Sprintf("0x%x", u.QPN)).
 						Str("type", getQueueTypeString(u.QueueType)).
 						Int("ret", int(retGetEvent)).
-						Str("errno", syscall.Errno(C.get_errno()).Error()).
+						Str("errno", errNo.Error()).
 						Msg("ibv_get_cq_event failed")
 					select {
-					// case u.errChan <- fmt.Errorf("ibv_get_cq_event failed: %s", syscall.Errno(C.get_errno()).Error()):
-					case u.errChan <- fmt.Errorf("ibv_get_cq_event failed: %w", syscall.Errno(C.get_errno())):
+					case u.errChan <- fmt.Errorf("ibv_get_cq_event failed: %w", errNo):
 					default:
 						log.Warn().Str("qpn", fmt.Sprintf("0x%x", u.QPN)).Msg("Error channel full, dropping ibv_get_cq_event error")
 					}
-					return // Critical error, poller stops
+					return // Truly fatal error, poller stops
 				}
 			}
 

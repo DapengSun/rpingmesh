@@ -281,7 +281,7 @@ func (u *UDQueue) SendProbePacket(
 				Msg("[probe_send] send completion error for probe packet")
 			return time.Time{}, time.Time{}, fmt.Errorf("send completion failed: %d", wc.Status)
 		}
-		t2 := time.Unix(0, int64(wc.CompletionWallclockNS))
+		t2 := hwTimestampOrNow(wc.CompletionWallclockNS)
 		log.Debug().
 			Str("target_dest_rnic_gid", targetGID).
 			Uint32("flow_label", flowLabel).
@@ -461,7 +461,7 @@ func (u *UDQueue) ReceivePacket(ctx context.Context) (*ProbePacket, time.Time, *
 		return nil, time.Time{}, nil, ctx.Err()
 
 	case goWC := <-u.recvCompChan:
-		receiveTime := time.Unix(0, int64(goWC.CompletionWallclockNS)) // use HW timestamp
+		receiveTime := hwTimestampOrNow(goWC.CompletionWallclockNS)
 
 		// Extract slot index from WRID to get the correct buffer
 		slot := int(goWC.WRID)
@@ -708,7 +708,7 @@ func (u *UDQueue) SendFirstAckPacket(
 	if wc.Status != C.IBV_WC_SUCCESS {
 		return time.Time{}, fmt.Errorf("First ACK send completion failed: status=%d", wc.Status)
 	}
-	sendCompletionTime := time.Unix(0, int64(wc.CompletionWallclockNS))
+	sendCompletionTime := hwTimestampOrNow(wc.CompletionWallclockNS)
 	log.Debug().
 		Str("target_gid", targetGID).
 		Uint64("seq", originalPacket.SequenceNum).
