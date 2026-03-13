@@ -479,6 +479,16 @@ func (a *Agent) runPinglistUpdater() {
 
 // runPinglistUpdateCycle runs updatePinglist until no immediate retry is needed.
 func (a *Agent) runPinglistUpdateCycle() {
+	// Proactively refresh registration before querying pinglist.
+	// GetPinglist is read-only and does NOT update last_updated in the registry.
+	// Without this, records expire after the TTL (5 min) and GetPinglist returns empty.
+	log.Info().Msg("Refreshing registration (heartbeat) before pinglist query")
+	if err := a.registerWithController(); err != nil {
+		log.Error().Err(err).Msg("Failed to refresh registration before pinglist update")
+	} else {
+		log.Info().Msg("Registration heartbeat sent successfully")
+	}
+
 	for {
 		retry := a.updatePinglist()
 		if !retry {

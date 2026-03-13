@@ -494,6 +494,12 @@ func (u *UDQueue) CreateAddressHandle(targetGID string, flowLabel uint32) (*C.st
 		log.Error().Str("invalid_target_gid", targetGID).Msg("CreateAddressHandle: Failed to parse target GID as IP address for AH creation")
 		return nil, fmt.Errorf("failed to parse target GID '%s' as IP address for AH creation", targetGID)
 	}
+	
+	log.Debug().
+		Str("targetGID", targetGID).
+		Str("parsed_ip", ipAddr.String()).
+		Bool("is_ipv4_mapped", ipAddr.To4() != nil).
+		Msg("CreateAddressHandle: Parsed target GID")
 
 	ahAttr := C.struct_ibv_ah_attr{}
 	ahAttr.is_global = 1
@@ -517,6 +523,12 @@ func (u *UDQueue) CreateAddressHandle(targetGID string, flowLabel uint32) (*C.st
 
 	// Copy IPv6 GID bytes to ahAttr.grh.dgid
 	C.memcpy(unsafe.Pointer(&ahAttr.grh.dgid), unsafe.Pointer(&ipv6[0]), 16)
+	
+	log.Debug().
+		Str("dgid_hex", fmt.Sprintf("%x", ipv6)).
+		Uint8("sgid_index", uint8(ahAttr.grh.sgid_index)).
+		Uint32("flow_label", uint32(ahAttr.grh.flow_label)).
+		Msg("CreateAddressHandle: AH attributes set")
 
 	ah := C.ibv_create_ah(u.RNIC.PD, &ahAttr)
 	if ah == nil {

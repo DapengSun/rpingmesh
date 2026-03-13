@@ -292,13 +292,39 @@ func (u *UDQueue) handleRecvCompletion(gwc *GoWorkCompletion) bool {
 			if uint32(gwc.ByteLen) >= GRHSize {
 				grhBytes := unsafe.Slice((*byte)(recvBufForSlot), GRHSize)
 				ipVersion := (grhBytes[0] >> 4) & 0x0F
+				
+				log.Debug().
+					Uint8("ip_version", ipVersion).
+					Str("grh_0_20_hex", fmt.Sprintf("%02x", grhBytes[0:20])).
+					Str("grh_20_40_hex", fmt.Sprintf("%02x", grhBytes[20:40])).
+					Uint64("seq", probePkt.SequenceNum).
+					Msg("ACK packet GRH parsing: IP version detected")
+				
 				if ipVersion == 6 {
-					sgid, dgid, flowLabel, grhParseErr = u.parseIPv6GRHFromBytes(grhBytes) // Assumes this helper exists or is added
+					sgid, dgid, flowLabel, grhParseErr = u.parseIPv6GRHFromBytes(grhBytes)
 				} else if ipVersion == 4 {
-					sgid, dgid, grhParseErr = u.parseIPv4GRHFromBytes(grhBytes) // Assumes this helper exists or is added
+					sgid, dgid, grhParseErr = u.parseIPv4GRHFromBytes(grhBytes)
+				} else if ipVersion == 0 {
+					// IP version 0: RoCEv2 with IPv4-mapped GIDs uses UDP/IPv4 encapsulation
+					log.Debug().Msg("ACK packet GRH: IP version 0 detected, parsing as RoCEv2/IPv4")
+					sgid, dgid, grhParseErr = u.parseIPv4GRHFromBytes(grhBytes)
+				} else {
+					grhParseErr = fmt.Errorf("unknown IP version in ACK GRH: %d", ipVersion)
 				}
+				
 				if grhParseErr != nil {
-					log.Warn().Err(grhParseErr).Int("slot", slot).Msg("GRH parsing failed in handleRecvCompletion for ACK")
+					log.Warn().
+						Err(grhParseErr).
+						Int("slot", slot).
+						Uint8("ip_version", ipVersion).
+						Msg("GRH parsing failed in handleRecvCompletion for ACK")
+				} else {
+					log.Debug().
+						Str("parsed_sgid", sgid).
+						Str("parsed_dgid", dgid).
+						Uint32("flow_label", flowLabel).
+						Uint64("seq", probePkt.SequenceNum).
+						Msg("ACK packet GRH parsed successfully")
 				}
 				payloadPtr = unsafe.Pointer(uintptr(recvBufForSlot) + uintptr(GRHSize))
 				payloadLen = uint32(gwc.ByteLen) - GRHSize
