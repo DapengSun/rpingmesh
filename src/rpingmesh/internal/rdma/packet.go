@@ -322,6 +322,25 @@ func (u *UDQueue) parseGRH(
 		// It might be part of the IPv6 header if one were constructed, but current parsing focuses on GIDs.
 	} else if ipVersion == 6 {
 		sgid, dgid, flowLabel, err = u.parseIPv6GRH(grhBytes)
+	} else if ipVersion == 0 {
+		// IP version 0: RoCEv2 with IPv4-mapped GIDs (::ffff:x.x.x.x) uses UDP/IPv4 encapsulation.
+		// The GRH contains an IPv4 header at offset 20, not standard IPv6 GID fields (gid-index=3).
+		log.Debug().
+			Str("grh_0_20_hex", fmt.Sprintf("%02x", grhBytes[0:20])).
+			Str("grh_20_40_hex", fmt.Sprintf("%02x", grhBytes[20:40])).
+			Msg("GRH IP Version field is 0. Parsing as RoCEv2/IPv4 format (IPv4 header at offset 20).")
+		sgid, dgid, err = u.parseIPv4GRH(grhBytes)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Str("grh_20_40_hex", fmt.Sprintf("%02x", grhBytes[20:40])).
+				Msg("parseIPv4GRH: Failed to parse IPv4 header for IP version 0 - this should not happen with valid RoCEv2/IPv4 packets")
+			return "", "", 0, nil, 0, fmt.Errorf("failed to parse RoCEv2/IPv4 GRH (IP version 0): %w", err)
+		}
+		log.Debug().
+			Str("parsed_sgid", sgid).
+			Str("parsed_dgid", dgid).
+			Msg("GRH IP version 0: Successfully parsed as RoCEv2/IPv4 format")
 	} else {
 		log.Error().Uint8("ip_version", ipVersion).Msg("GRH has an unknown or unsupported IP Version in its first byte.")
 		err = fmt.Errorf("GRH has unknown IP version: %d", ipVersion)
@@ -338,11 +357,11 @@ func (u *UDQueue) parseGRH(
 }
 
 // parseIPv4GRH handles parsing for IPv4-like GRH data.
-// Returns sgid, dgid, error
+// Returns sgid, dgid, error. Used for ipVersion 4 and 0 (RoCEv2/IPv4 at offset 20).
 func (u *UDQueue) parseIPv4GRH(grhBytes []byte) (string, string, error) {
-	log.Trace().Msg("GRH IP Version field is 4. Applying custom IPv4 header parsing logic (from GRH offset 20).")
+	log.Debug().Msg("parseIPv4GRH: Parsing IPv4 header from GRH offset 20.")
 
-	const ipv4HeaderOffsetInGRH = 20 // Current code's assumption
+	const ipv4HeaderOffsetInGRH = 20 // RoCEv2/IPv4: IPv4 header at offset 20
 	const ipv4HeaderMinLength = 20   // Standard IPv4 header length
 
 	if GRHSize < ipv4HeaderOffsetInGRH+ipv4HeaderMinLength {
@@ -357,9 +376,11 @@ func (u *UDQueue) parseIPv4GRH(grhBytes []byte) (string, string, error) {
 	}
 
 	ipv4HeaderBytes := grhBytes[ipv4HeaderOffsetInGRH : ipv4HeaderOffsetInGRH+ipv4HeaderMinLength]
+	log.Debug().Str("ipv4_header_hex", fmt.Sprintf("%02x", ipv4HeaderBytes)).Msg("parseIPv4GRH: Extracted IPv4 header bytes from offset 20")
+
 	parsedIPv4Header, parseErr := ipv4.ParseHeader(ipv4HeaderBytes)
 	if parseErr != nil {
-		log.Warn().Err(parseErr).Bytes("data", ipv4HeaderBytes).Msg("Failed to parse bytes from GRH offset 20 as IPv4 header.")
+		log.Error().Err(parseErr).Str("ipv4_header_hex", fmt.Sprintf("%02x", ipv4HeaderBytes)).Msg("parseIPv4GRH: Failed to parse bytes from GRH offset 20 as IPv4 header.")
 		return "", "", fmt.Errorf("failed to parse GRH region's IPv4 header part (offset 20): %w", parseErr)
 	}
 
@@ -367,7 +388,7 @@ func (u *UDQueue) parseIPv4GRH(grhBytes []byte) (string, string, error) {
 		log.Error().Msg("Parsed IPv4 header from GRH offset 20, but Src or Dst IP is nil.")
 		return "", "", fmt.Errorf("parsed IPv4 header from GRH (offset 20), but Src/Dst IP is nil")
 	}
-	log.Trace().Str("parsed_ipv4_header", parsedIPv4Header.String()).Msg("Successfully parsed IPv4 Header from GRH offset 20")
+	log.Debug().Str("parsed_ipv4_header", parsedIPv4Header.String()).Msg("parseIPv4GRH: Successfully parsed IPv4 Header from GRH offset 20")
 
 	srcIPv4 := parsedIPv4Header.Src.To4()
 	dstIPv4 := parsedIPv4Header.Dst.To4()
@@ -379,7 +400,15 @@ func (u *UDQueue) parseIPv4GRH(grhBytes []byte) (string, string, error) {
 
 	srcMappedIPv6Bytes := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, srcIPv4[0], srcIPv4[1], srcIPv4[2], srcIPv4[3]}
 	dstMappedIPv6Bytes := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, dstIPv4[0], dstIPv4[1], dstIPv4[2], dstIPv4[3]}
-	return formatGIDString(srcMappedIPv6Bytes), formatGIDString(dstMappedIPv6Bytes), nil
+	sgidStr := formatGIDString(srcMappedIPv6Bytes)
+	dgidStr := formatGIDString(dstMappedIPv6Bytes)
+	log.Debug().
+		Str("ipv4_src", parsedIPv4Header.Src.String()).
+		Str("ipv4_dst", parsedIPv4Header.Dst.String()).
+		Str("result_sgid", sgidStr).
+		Str("result_dgid", dgidStr).
+		Msg("parseIPv4GRH: Successfully parsed IPv4 addresses and converted to IPv6-mapped format")
+	return sgidStr, dgidStr, nil
 }
 
 // parseIPv6GRH handles parsing for standard IPv6 GRH data.

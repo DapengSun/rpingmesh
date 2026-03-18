@@ -489,6 +489,12 @@ func (u *UDQueue) CreateAddressHandle(targetGID string, flowLabel uint32) (*C.st
 		return nil, fmt.Errorf("failed to parse target GID '%s' as IP address for AH creation", targetGID)
 	}
 
+	log.Debug().
+		Str("targetGID", targetGID).
+		Str("parsed_ip", ipAddr.String()).
+		Bool("is_ipv4_mapped", ipAddr.To4() != nil).
+		Msg("CreateAddressHandle: Parsed target GID")
+
 	ahAttr := C.struct_ibv_ah_attr{}
 	ahAttr.is_global = 1
 	ahAttr.port_num = C.uint8_t(u.RNIC.ActivePortNum) // Use active port from RNIC
@@ -502,15 +508,32 @@ func (u *UDQueue) CreateAddressHandle(targetGID string, flowLabel uint32) (*C.st
 	ahAttr.grh.hop_limit = 255                               // Max hop limit
 	ahAttr.grh.traffic_class = 0                             // Default traffic class
 
-	// Convert targetGID string to C.struct_ibv_gid
-	ipv6 := ipAddr.To16()
-	if ipv6 == nil {
+	// Convert targetGID string to 16-byte IPv6 representation (required for RoCEv2 gid-index=3)
+	ipv6Bytes := ipAddr.To16()
+	if ipv6Bytes == nil {
 		log.Error().Str("targetGID", targetGID).Msg("CreateAddressHandle: Target GID is not a valid IPv6 address after parsing")
 		return nil, fmt.Errorf("target GID '%s' is not a valid IPv6 address", targetGID)
 	}
+	if len(ipv6Bytes) != 16 {
+		log.Error().
+			Str("targetGID", targetGID).
+			Int("ipv6_len", len(ipv6Bytes)).
+			Str("ipv6_string", ipv6Bytes.String()).
+			Msg("CreateAddressHandle: IPv6 address is not 16 bytes")
+		return nil, fmt.Errorf("target GID '%s' converted to IPv6 with wrong length: %d", targetGID, len(ipv6Bytes))
+	}
+
+	log.Debug().
+		Str("dgid_hex", fmt.Sprintf("%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+			ipv6Bytes[0], ipv6Bytes[1], ipv6Bytes[2], ipv6Bytes[3], ipv6Bytes[4], ipv6Bytes[5], ipv6Bytes[6], ipv6Bytes[7],
+			ipv6Bytes[8], ipv6Bytes[9], ipv6Bytes[10], ipv6Bytes[11], ipv6Bytes[12], ipv6Bytes[13], ipv6Bytes[14], ipv6Bytes[15])).
+		Str("dgid_string", ipv6Bytes.String()).
+		Uint8("sgid_index", uint8(ahAttr.grh.sgid_index)).
+		Uint32("flow_label", uint32(ahAttr.grh.flow_label)).
+		Msg("CreateAddressHandle: AH attributes set")
 
 	// Copy IPv6 GID bytes to ahAttr.grh.dgid
-	C.memcpy(unsafe.Pointer(&ahAttr.grh.dgid), unsafe.Pointer(&ipv6[0]), 16)
+	C.memcpy(unsafe.Pointer(&ahAttr.grh.dgid), unsafe.Pointer(&ipv6Bytes[0]), 16)
 
 	ah := C.ibv_create_ah(u.RNIC.PD, &ahAttr)
 	if ah == nil {
