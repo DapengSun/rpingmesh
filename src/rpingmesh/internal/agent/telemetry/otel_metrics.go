@@ -22,13 +22,10 @@ type Metrics struct {
 	meter    metric.Meter
 
 	// Network RTT (Round-Trip Time)
-	nwRttGauge     metric.Int64Gauge
 	nwRttHistogram metric.Int64Histogram
 
-	// Host processing delay as Histogram
-	proberDelayGauge        metric.Int64Gauge
+	// Host processing delay
 	proberDelayHistogram    metric.Int64Histogram
-	responderDelayGauge     metric.Int64Gauge
 	responderDelayHistogram metric.Int64Histogram
 
 	// Timeout counter
@@ -123,15 +120,6 @@ func NewMetrics(ctx context.Context, agentID, collectorAddr string) (*Metrics, e
 	// Get a meter
 	meter := provider.Meter("github.com/yuuki/rpingmesh/agent")
 
-	// Create Network RTT meter
-	nwRttGauge, err := meter.Int64Gauge(
-		"rpingmesh.nwrtt",
-		metric.WithDescription("Network Round-Trip Time in nanoseconds"),
-		metric.WithUnit("ns"),
-	)
-	if err != nil {
-		return nil, err
-	}
 	nwRttHistogram, err := meter.Int64Histogram(
 		"rpingmesh.nwrtt",
 		metric.WithDescription("Network Round-Trip Time in nanoseconds"),
@@ -141,14 +129,6 @@ func NewMetrics(ctx context.Context, agentID, collectorAddr string) (*Metrics, e
 		return nil, err
 	}
 
-	proberDelayGauge, err := meter.Int64Gauge(
-		"rpingmesh.prober_delay",
-		metric.WithDescription("Prober processing delay in nanoseconds"),
-		metric.WithUnit("ns"),
-	)
-	if err != nil {
-		return nil, err
-	}
 	proberDelayHistogram, err := meter.Int64Histogram(
 		"rpingmesh.prober_delay",
 		metric.WithDescription("Prober processing delay in nanoseconds"),
@@ -158,14 +138,6 @@ func NewMetrics(ctx context.Context, agentID, collectorAddr string) (*Metrics, e
 		return nil, err
 	}
 
-	responderDelayGauge, err := meter.Int64Gauge(
-		"rpingmesh.responder_delay",
-		metric.WithDescription("Responder processing delay in nanoseconds"),
-		metric.WithUnit("ns"),
-	)
-	if err != nil {
-		return nil, err
-	}
 	responderDelayHistogram, err := meter.Int64Histogram(
 		"rpingmesh.responder_delay",
 		metric.WithDescription("Responder processing delay in nanoseconds"),
@@ -187,11 +159,8 @@ func NewMetrics(ctx context.Context, agentID, collectorAddr string) (*Metrics, e
 	return &Metrics{
 		provider:                provider,
 		meter:                   meter,
-		nwRttGauge:              nwRttGauge,
 		nwRttHistogram:          nwRttHistogram,
-		proberDelayGauge:        proberDelayGauge,
 		proberDelayHistogram:    proberDelayHistogram,
-		responderDelayGauge:     responderDelayGauge,
 		responderDelayHistogram: responderDelayHistogram,
 		timeoutCounter:          timeoutCounter,
 	}, nil
@@ -199,7 +168,6 @@ func NewMetrics(ctx context.Context, agentID, collectorAddr string) (*Metrics, e
 
 // RecordRTT records a RTT measurement
 func (m *Metrics) RecordRTT(ctx context.Context, rttNs int64, attributes ...metric.RecordOption) {
-	m.nwRttGauge.Record(ctx, rttNs, attributes...)
 	m.nwRttHistogram.Record(ctx, rttNs, attributes...)
 }
 
@@ -210,13 +178,11 @@ func (m *Metrics) RecordTimeout(ctx context.Context, attributes ...metric.AddOpt
 
 // RecordProberDelay records a prober processing delay
 func (m *Metrics) RecordProberDelay(ctx context.Context, delayNs int64, attributes ...metric.RecordOption) {
-	m.proberDelayGauge.Record(ctx, delayNs, attributes...)
 	m.proberDelayHistogram.Record(ctx, delayNs, attributes...)
 }
 
 // RecordResponderDelay records a responder processing delay
 func (m *Metrics) RecordResponderDelay(ctx context.Context, delayNs int64, attributes ...metric.RecordOption) {
-	m.responderDelayGauge.Record(ctx, delayNs, attributes...)
 	m.responderDelayHistogram.Record(ctx, delayNs, attributes...)
 }
 
