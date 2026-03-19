@@ -103,9 +103,21 @@ func NewMetrics(ctx context.Context, agentID, collectorAddr string) (*Metrics, e
 		return nil, fmt.Errorf("failed to create OTLP exporter (%s://%s): %w", parsedURL.Scheme, exporterEndpoint, err)
 	}
 
-	// Create meter provider with the exporter
+	// Create meter provider with the exporter.
+	// View for rpingmesh.nwrtt: single large boundary (1e12 ns = 1000s) so we get
+	// only 2 buckets (le="1e12", le="+Inf") instead of default 10~20. Reduces
+	// cardinality; use _sum/_count for average. Empty Boundaries[] is not stable
+	// across SDK versions, so use an explicit upper bound.
 	provider := sdkmetric.NewMeterProvider(
 		sdkmetric.WithResource(res),
+		sdkmetric.WithView(sdkmetric.NewView(
+			sdkmetric.Instrument{Name: "rpingmesh.nwrtt"},
+			sdkmetric.Stream{
+				Aggregation: sdkmetric.AggregationExplicitBucketHistogram{
+					Boundaries: []float64{1e12}, // 1e12 ns = 1000s, above any realistic RTT
+				},
+			},
+		)),
 		sdkmetric.WithReader(
 			sdkmetric.NewPeriodicReader(
 				exporter,
