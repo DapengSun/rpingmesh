@@ -635,7 +635,7 @@ func (p *Prober) ProbeTarget(
 				Msg("[prober]: CRITICAL: t4 < t3 detected, RNIC driver clock domain mismatch, discarding probe result")
 
 			// Mark probe as failed and do not calculate RTT metrics
-			result.Status = agent_analyzer.ProbeResult_FAILED
+			result.Status = agent_analyzer.ProbeResult_ERROR
 			result.ResponderDelay = 0
 			result.NetworkRtt = 0
 			result.ProberDelay = 0
