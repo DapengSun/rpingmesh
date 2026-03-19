@@ -115,6 +115,12 @@ func (u *UDQueue) PostRecvSlot(slot int) error {
 	slotAddr := u.RecvSlots[slot]
 	wrid := uint64(slot) // Use slot index as WRID
 
+	log.Debug().
+		Str("qpn", fmt.Sprintf("0x%x", u.QPN)).
+		Str("type", getQueueTypeString(u.QueueType)).
+		Int("slot", slot).
+		Msg("PostRecvSlot: posting recv WR")
+
 	// Use the C helper function with WRID support
 	ret := C.post_recv_with_wrid(
 		u.QP,
@@ -536,7 +542,15 @@ func (u *UDQueue) ReceivePacket(ctx context.Context) (*ProbePacket, time.Time, *
 			log.Warn().Msg("Received a probe, but SGID could not be determined (e.g. no GRH or GRH parsing issue). Sending ACK might fail if SGID is required for AH creation.")
 		}
 
+		// Repost the slot buffer now that the packet has been consumed.
+		// This is the sole repost point for non-ACK packets that were successfully
+		// queued through recvCompChan. cq.go must NOT repost for this path.
 		if slot >= 0 && slot < u.NumRecvSlots {
+			log.Debug().
+				Str("device", u.RNIC.DeviceName).
+				Uint32("qpn", u.QPN).
+				Int("slot", slot).
+				Msg("ReceivePacket: reposting slot after packet consumed")
 			if errPost := u.PostRecvSlot(slot); errPost != nil {
 				log.Warn().Err(errPost).
 					Str("device", u.RNIC.DeviceName).

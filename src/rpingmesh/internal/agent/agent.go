@@ -481,9 +481,29 @@ func (a *Agent) runPinglistUpdater() {
 	}
 }
 
-// updatePinglist gets a fresh pinglist from the controller for all local RNICs
+// updatePinglist re-registers the agent with the controller to refresh the TTL,
+// then fetches a fresh pinglist for all local RNICs.
+//
+// Re-registration is required on every cycle because the controller registry
+// uses a TTL (5-minute sliding window via SQLite datetime comparison) to evict
+// stale entries. Without periodic re-registration the agent's RNICs would
+// expire from the registry and the controller would return an empty pinglist.
 func (a *Agent) updatePinglist() {
 	log.Debug().Msg("Updating pinglist from controller")
+
+	// Re-register to refresh the TTL in the controller registry before querying
+	// the pinglist. If re-registration fails we log a warning but still attempt
+	// to fetch the pinglist with whatever TTL remains.
+	if err := a.controllerClient.RegisterAgent(
+		a.agentState.GetAgentID(),
+		a.agentState.GetHostName(),
+		a.agentState.GetAgentIP(),
+		a.agentState.GetDetectedRNICs(),
+	); err != nil {
+		log.Warn().Err(err).Msg("Failed to re-register agent with controller during pinglist update; TTL may expire")
+	} else {
+		log.Debug().Msg("Re-registered agent with controller to refresh TTL")
+	}
 
 	// Get all detected RNICs instead of just the primary one
 	localRnics := a.agentState.GetDetectedRNICs()

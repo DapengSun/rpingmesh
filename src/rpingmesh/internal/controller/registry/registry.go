@@ -107,8 +107,15 @@ func (r *RnicRegistry) RegisterRNIC(
 	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 	`
 
-	// Current time in RFC3339 format
-	now := time.Now().UTC().Format(time.RFC3339)
+	// Use SQLite datetime-compatible format (space separator, no timezone suffix).
+	// RFC3339 uses 'T' as the date-time separator (ASCII 84), while SQLite's
+	// datetime() function uses a space (ASCII 32). Because 'T' > ' ' in
+	// lexicographic order, an RFC3339 timestamp always compares as "greater than"
+	// any SQLite datetime() value on the same calendar day, making the TTL filter
+	// ineffective until UTC midnight — at which point the date digit flips and
+	// all registrations from the previous day are suddenly treated as expired,
+	// causing a mass-eviction of every RNIC at UTC 00:05 (CST 08:05) every day.
+	now := time.Now().UTC().Format(time.DateTime)
 
 	// Create parameterized statement
 	stmt := gorqlite.ParameterizedStatement{
