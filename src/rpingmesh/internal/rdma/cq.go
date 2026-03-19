@@ -574,15 +574,23 @@ func (u *UDQueue) StartCQPoller() {
 					log.Info().Str("qpn", fmt.Sprintf("0x%x", u.QPN)).Str("type", getQueueTypeString(u.QueueType)).Msg("CQ poller: ibv_get_cq_event failed during shutdown. Normal.")
 					return
 				default:
+					errNo := syscall.Errno(C.get_errno())
+					if errNo == syscall.EINTR {
+						// Signal interrupted the blocking call; this is transient, retry.
+						log.Debug().
+							Str("qpn", fmt.Sprintf("0x%x", u.QPN)).
+							Str("type", getQueueTypeString(u.QueueType)).
+							Msg("CQ poller: ibv_get_cq_event interrupted by signal (EINTR), retrying")
+						continue
+					}
 					log.Error().
 						Str("qpn", fmt.Sprintf("0x%x", u.QPN)).
 						Str("type", getQueueTypeString(u.QueueType)).
 						Int("ret", int(retGetEvent)).
-						Str("errno", syscall.Errno(C.get_errno()).Error()).
+						Str("errno", errNo.Error()).
 						Msg("ibv_get_cq_event failed")
 					select {
-					// case u.errChan <- fmt.Errorf("ibv_get_cq_event failed: %s", syscall.Errno(C.get_errno()).Error()):
-					case u.errChan <- fmt.Errorf("ibv_get_cq_event failed: %w", syscall.Errno(C.get_errno())):
+					case u.errChan <- fmt.Errorf("ibv_get_cq_event failed: %w", errNo):
 					default:
 						log.Warn().Str("qpn", fmt.Sprintf("0x%x", u.QPN)).Msg("Error channel full, dropping ibv_get_cq_event error")
 					}
