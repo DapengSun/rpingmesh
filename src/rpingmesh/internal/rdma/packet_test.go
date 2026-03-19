@@ -956,18 +956,17 @@ func MockUDQueueWithPacket(packet ProbePacket) *MockUDQueue {
 }
 
 // ReceivePacket is a mock implementation for testing
-func (m *MockUDQueue) ReceivePacket(ctx context.Context) (*ProbePacket, time.Time, time.Time, *ProcessedWorkCompletion, error) {
+func (m *MockUDQueue) ReceivePacket(ctx context.Context) (*ProbePacket, time.Time, *ProcessedWorkCompletion, error) {
 	// Wait for completion notification from CQ poller
 	select {
 	case err := <-m.errChan:
-		return nil, time.Time{}, time.Time{}, nil, fmt.Errorf("error during receive: %w", err)
+		return nil, time.Time{}, nil, fmt.Errorf("error during receive: %w", err)
 
 	case <-ctx.Done(): // Context cancelled or timed out
-		return nil, time.Time{}, time.Time{}, nil, ctx.Err()
+		return nil, time.Time{}, nil, ctx.Err()
 
 	case goWC := <-m.recvCompChan:
-		receiveTime := time.Unix(0, int64(goWC.CompletionWallclockNS)) // t3Hw: HW wallclock
-		t3Mono := time.Now()                                            // t3Mono: captured immediately after RECV WC
+		receiveTime := time.Unix(0, int64(goWC.CompletionWallclockNS))
 
 		// Parse GRH (if present) and determine payload location and length
 		sgid, dgid, flowLabel, payloadDataPtr, actualPayloadLength, grhParseErr := m.parseGRH(goWC, m.RecvBuf)
@@ -980,19 +979,19 @@ func (m *MockUDQueue) ReceivePacket(ctx context.Context) (*ProbePacket, time.Tim
 		}
 
 		if grhParseErr != nil {
-			return nil, receiveTime, t3Mono, processedWC, grhParseErr
+			return nil, receiveTime, processedWC, grhParseErr
 		}
 
 		// Deserialize the payload into a ProbePacket
 		packet, deserializeErr := m.deserializeProbePacket(payloadDataPtr, actualPayloadLength)
 		if deserializeErr != nil {
-			return nil, receiveTime, t3Mono, processedWC, deserializeErr
+			return nil, receiveTime, processedWC, deserializeErr
 		}
 
 		// PostRecv is mocked and will always succeed
 		m.PostRecv()
 
-		return packet, receiveTime, t3Mono, processedWC, nil
+		return packet, receiveTime, processedWC, nil
 	}
 }
 
@@ -1043,7 +1042,7 @@ func TestReceivePacket(t *testing.T) {
 
 		// Call ReceivePacket
 		ctx := context.Background()
-		packet, receiveTime, _, processedWC, err := mockQueue.ReceivePacket(ctx)
+		packet, receiveTime, processedWC, err := mockQueue.ReceivePacket(ctx)
 
 		// Verify results
 		if err != nil {
@@ -1081,7 +1080,7 @@ func TestReceivePacket(t *testing.T) {
 
 		// Call ReceivePacket
 		ctx := context.Background()
-		packet, receiveTime, _, processedWC, err := mockQueue.ReceivePacket(ctx)
+		packet, receiveTime, processedWC, err := mockQueue.ReceivePacket(ctx)
 
 		// Verify results
 		if err == nil {
@@ -1111,7 +1110,7 @@ func TestReceivePacket(t *testing.T) {
 		cancel()
 
 		// Call ReceivePacket with cancelled context
-		packet, receiveTime, _, processedWC, err := mockQueue.ReceivePacket(ctx)
+		packet, receiveTime, processedWC, err := mockQueue.ReceivePacket(ctx)
 
 		// Verify results
 		if err == nil {

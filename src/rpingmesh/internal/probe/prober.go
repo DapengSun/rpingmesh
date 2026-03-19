@@ -620,6 +620,20 @@ func (p *Prober) ProbeTarget(
 	// Calculate delays if all timestamps are available
 	if result.T2 != nil && result.T3 != nil && result.T4 != nil && result.T5 != nil {
 		responderDelay := t4.Sub(t3)
+
+		// t4 is the HW wallclock of ACK1 SEND WC; t3 is the HW wallclock of probe RECV WC.
+		// On some RNIC drivers the SEND WC wallclock can be earlier than the RECV WC wallclock,
+		// producing a negative responderDelay. Log it for debugging but keep the raw value.
+		if responderDelay < 0 {
+			log.Debug().
+				Uint64("seqNum", seqNum).
+				Str("actualDstGID", actualDstGid).
+				Int64("t3_ns", t3.UnixNano()).
+				Int64("t4_ns", t4.UnixNano()).
+				Int64("responderDelay_ns", responderDelay.Nanoseconds()).
+				Msg("[prober]: WARNING t4 < t3: RNIC SEND WC wallclock is earlier than RECV WC wallclock (driver quirk), responderDelay is negative")
+		}
+
 		result.ResponderDelay = responderDelay.Nanoseconds()
 		result.NetworkRtt = (t5.Sub(t2) - responderDelay).Nanoseconds()
 		result.ProberDelay = (t6.Sub(t1) - (t5.Sub(t2))).Nanoseconds()
@@ -706,7 +720,7 @@ func (p *Prober) responderLoop(udq *rdma.UDQueue) {
 
 		default:
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-			packet, receiveTime, t3Mono, processedWC, err := udq.ReceivePacket(ctx)
+			packet, receiveTime, processedWC, err := udq.ReceivePacket(ctx)
 			cancel()
 			if err != nil {
 				if !errors.Is(err, context.DeadlineExceeded) {
@@ -807,9 +821,8 @@ func (p *Prober) responderLoop(udq *rdma.UDQueue) {
 				Msg("[responder]: Received probe packet, sending ACKs")
 
 			// Step 2: Send first ACK packet immediately (without processing delay info).
-			// t4Mono is the monotonic clock captured right after the SEND WC is observed;
-			// it is NOT the HW wallclock (which is unreliable for SEND completions on some drivers).
-			t4Mono, err := udq.SendFirstAckPacket(sourceGID, sourceQPN, processedWC.FlowLabel, packet, receiveTime)
+			// sendCompletionTime is the HW wallclock from the SEND WC (t4).
+			sendCompletionTime, err := udq.SendFirstAckPacket(sourceGID, sourceQPN, processedWC.FlowLabel, packet, receiveTime)
 			if err != nil {
 				atomic.AddUint64(&errorPackets, 1)
 				log.Error().Err(err).
@@ -826,13 +839,12 @@ func (p *Prober) responderLoop(udq *rdma.UDQueue) {
 				Uint32("sourceQPN", sourceQPN).
 				Uint32("flowLabel", processedWC.FlowLabel).
 				Uint64("seqNum", packet.SequenceNum).
-				Dur("responderDelay_mono", t4Mono.Sub(t3Mono)).
+				Time("t3_receiveTime", receiveTime).
+				Time("t4_sendCompletionTime", sendCompletionTime).
 				Msg("[responder]: Sent first ACK packet")
 
-			// Step 3: Send second ACK packet with corrected t4.
-			// t4 = receiveTime(t3Hw) + (t4Mono - t3Mono), keeping the result in the HW clock
-			// domain of t3 while using the monotonic interval as the responder processing time.
-			err = udq.SendSecondAckPacket(sourceGID, sourceQPN, processedWC.FlowLabel, packet, receiveTime, t3Mono, t4Mono)
+			// Step 3: Send second ACK packet with t3 and t4 (both HW wallclock).
+			err = udq.SendSecondAckPacket(sourceGID, sourceQPN, processedWC.FlowLabel, packet, receiveTime, sendCompletionTime)
 			if err != nil {
 				atomic.AddUint64(&errorPackets, 1)
 				log.Error().Err(err).

@@ -27,7 +27,7 @@ func (m *testUDQueue) SendProbePacket(ctx context.Context, targetGID string, tar
 }
 
 // ReceivePacket implements the needed method for receiving packets
-func (m *testUDQueue) ReceivePacket(ctx context.Context) (*rdma.ProbePacket, time.Time, time.Time, *rdma.ProcessedWorkCompletion, error) {
+func (m *testUDQueue) ReceivePacket(ctx context.Context) (*rdma.ProbePacket, time.Time, *rdma.ProcessedWorkCompletion, error) {
 	args := m.Called(ctx)
 	var packet *rdma.ProbePacket
 	if args.Get(0) != nil {
@@ -37,7 +37,7 @@ func (m *testUDQueue) ReceivePacket(ctx context.Context) (*rdma.ProbePacket, tim
 	if args.Get(2) != nil {
 		workComp = args.Get(2).(*rdma.ProcessedWorkCompletion)
 	}
-	return packet, args.Get(1).(time.Time), time.Now(), workComp, args.Error(3)
+	return packet, args.Get(1).(time.Time), workComp, args.Error(3)
 }
 
 // TestProbeTargetTwoACKs tests the ProbeTarget function with two ACKs
