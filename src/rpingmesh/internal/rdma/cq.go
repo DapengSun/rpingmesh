@@ -64,6 +64,16 @@ type WorkCompletionEvent struct {
 	Timestamp      time.Time
 }
 
+// hwTimestampOrNow returns a time.Time from a hardware wallclock nanosecond value.
+// Falls back to time.Now() when wallclockNS is 0 (hardware timestamps unavailable),
+// preventing epoch-based timestamps from producing invalid RTT measurements.
+func hwTimestampOrNow(wallclockNS uint64) time.Time {
+	if wallclockNS == 0 {
+		return time.Now()
+	}
+	return time.Unix(0, int64(wallclockNS))
+}
+
 // processCQCompletions polls for work completions and processes them.
 func (u *UDQueue) processCQCompletions(cqEx *C.struct_ibv_cq_ex) {
 	// ibv_start_poll was successful, so cqEx points to the first completion.
@@ -391,7 +401,7 @@ func (u *UDQueue) handleRecvCompletion(gwc *GoWorkCompletion) bool {
 
 		ackInfo := &IncomingAckInfo{
 			Packet:      &ppCopy, // Use the safe copy instead of pointer to slot buffer
-			ReceivedAt:  time.Unix(0, int64(gwc.CompletionWallclockNS)),
+			ReceivedAt:  hwTimestampOrNow(gwc.CompletionWallclockNS),
 			ProcessedWC: processedWCForAck,
 			AckStatusOK: gwc.Status == C.IBV_WC_SUCCESS, // Set AckStatusOK based on gwc.Status
 		}
