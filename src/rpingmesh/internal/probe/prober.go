@@ -621,17 +621,31 @@ func (p *Prober) ProbeTarget(
 	if result.T2 != nil && result.T3 != nil && result.T4 != nil && result.T5 != nil {
 		responderDelay := t4.Sub(t3)
 
-		// t4 is the HW wallclock of ACK1 SEND WC; t3 is the HW wallclock of probe RECV WC.
-		// On some RNIC drivers the SEND WC wallclock can be earlier than the RECV WC wallclock,
-		// producing a negative responderDelay. Log it for debugging but keep the raw value.
+		// Check for RNIC driver clock domain inconsistency: t4 < t3
 		if responderDelay < 0 {
-			log.Debug().
+			// t4 is earlier than t3, indicating RNIC driver clock domain mismatch
+			// between RECV and SEND completions. This produces invalid networkRtt
+			// measurements, so we mark the probe as failed and discard the result.
+			log.Warn().
 				Uint64("seqNum", seqNum).
 				Str("actualDstGID", actualDstGid).
 				Int64("t3_ns", t3.UnixNano()).
 				Int64("t4_ns", t4.UnixNano()).
 				Int64("responderDelay_ns", responderDelay.Nanoseconds()).
-				Msg("[prober]: WARNING t4 < t3: RNIC SEND WC wallclock is earlier than RECV WC wallclock (driver quirk), responderDelay is negative")
+				Msg("[prober]: CRITICAL: t4 < t3 detected, RNIC driver clock domain mismatch, discarding probe result")
+
+			// Mark probe as failed and do not calculate RTT metrics
+			result.Status = agent_analyzer.ProbeResult_FAILED
+			result.ResponderDelay = 0
+			result.NetworkRtt = 0
+			result.ProberDelay = 0
+
+			// Update statistics for failed probe using atomic operation
+			atomic.AddUint64(&p.stats.FailedProbes, 1)
+
+			// Send the failed result (for statistics tracking)
+			p.probeResults <- result
+			return
 		}
 
 		result.ResponderDelay = responderDelay.Nanoseconds()
