@@ -2,10 +2,11 @@
 # 复制此文件到配置目录并重命名为 otel-collector-config.yaml
 #
 # 此配置支持：
-# 1. 数据持久化（file_storage extension）- 防止主机掉线时数据丢失
-# 2. Debug 导出 - 用于调试和验证数据接收
+# 1. 数据持久化（file_storage）- 队列溢出时落盘，重启可恢复
+# 2. 内存限流（memory_limiter）- 防止 OOM，需按容器内存调整 limit_mib
+# 3. 导出重试（retry_on_failure）- 临时故障时重试，减少丢数
 #
-# 注意：如需配置 Prometheus，请取消注释 prometheus exporter 部分
+# 生产环境建议关闭 debug；调试时可取消注释 debug 并加入 pipeline.exporters
 
 receivers:
   otlp:
@@ -16,28 +17,28 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
+  # 必须放在 pipeline 第一位：内存超限时背压，避免 OOM（按容器内存调整）
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 400
+    spike_limit_mib: 100
   batch:
     timeout: 10s
-    send_batch_size: 1024
-  # 可选：添加资源属性
+    send_batch_size: 2048
   resource:
     attributes:
       - key: deployment.environment
         value: "production"
         action: upsert
 
-# 扩展：启用持久化存储（WAL - Write-Ahead Log）
-# 用于在 Collector 崩溃或重启时保留未发送的数据
-# 注意：如果不需要持久化，可以注释掉整个 extensions 部分
 extensions:
   file_storage:
     directory: /app/data/storage
 
 exporters:
-  # 导出到调试日志（用于调试和验证数据接收）
-  debug:
-    verbosity: normal  # 可选值: detailed, normal, basic
-  
+  # debug:
+  #   verbosity: basic
+
   prometheus:
     endpoint: "0.0.0.0:8889"
     const_labels:
@@ -45,16 +46,19 @@ exporters:
     sending_queue:
       enabled: true
       num_consumers: 10
-      queue_size: 5000
+      queue_size: 50000
       storage: file_storage
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
 
 service:
-  # 注册扩展
   extensions: [file_storage]
-  
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [batch, resource]
-      exporters: [debug, prometheus]
+      processors: [memory_limiter, batch, resource]
+      exporters: [prometheus]
 
