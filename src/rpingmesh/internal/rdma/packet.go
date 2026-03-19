@@ -459,18 +459,25 @@ func (u *UDQueue) deserializeProbePacket(payloadDataPtr unsafe.Pointer, actualPa
 	return &packetCopy, nil
 }
 
-// ReceivePacket waits for and processes a received packet using completion channel
-func (u *UDQueue) ReceivePacket(ctx context.Context) (*ProbePacket, time.Time, *ProcessedWorkCompletion, error) {
+// ReceivePacket waits for and processes a received packet using completion channel.
+// Returns (packet, t3Hw, t3Mono, processedWC, error) where:
+//   - t3Hw   is the HW wallclock timestamp from the RECV WC (CompletionWallclockNS).
+//   - t3Mono is the monotonic CPU clock captured immediately after the RECV WC is observed.
+//             It is paired with the t4Mono returned by SendFirstAckPacket to compute a
+//             corrected t4 = t3Hw + (t4Mono - t3Mono), eliminating the SEND-WC wallclock
+//             unreliability seen on certain RNIC drivers.
+func (u *UDQueue) ReceivePacket(ctx context.Context) (*ProbePacket, time.Time, time.Time, *ProcessedWorkCompletion, error) {
 	// Wait for completion notification from CQ poller
 	select {
 	case err := <-u.errChan:
-		return nil, time.Time{}, nil, fmt.Errorf("error during receive: %w", err)
+		return nil, time.Time{}, time.Time{}, nil, fmt.Errorf("error during receive: %w", err)
 
 	case <-ctx.Done(): // Context cancelled or timed out
-		return nil, time.Time{}, nil, ctx.Err()
+		return nil, time.Time{}, time.Time{}, nil, ctx.Err()
 
 	case goWC := <-u.recvCompChan:
-		receiveTime := time.Unix(0, int64(goWC.CompletionWallclockNS)) // use HW timestamp
+		receiveTime := time.Unix(0, int64(goWC.CompletionWallclockNS)) // t3Hw: HW wallclock
+		t3Mono := time.Now()                                            // t3Mono: captured immediately after RECV WC
 
 		// Extract slot index from WRID to get the correct buffer
 		slot := int(goWC.WRID)
@@ -496,7 +503,7 @@ func (u *UDQueue) ReceivePacket(ctx context.Context) (*ProbePacket, time.Time, *
 		if grhParseErr != nil {
 			// This error comes from GRH parsing issues (e.g., bad length, unknown IP version).
 			log.Warn().Err(grhParseErr).Msg("Failed to parse GRH or determine payload details")
-			return nil, receiveTime, processedWC, grhParseErr // Return ProcessedWC even on GRH error, it contains the base goWC info
+			return nil, receiveTime, t3Mono, processedWC, grhParseErr // Return ProcessedWC even on GRH error, it contains the base goWC info
 		}
 
 		// Deserialize the payload into a ProbePacket
@@ -520,7 +527,7 @@ func (u *UDQueue) ReceivePacket(ctx context.Context) (*ProbePacket, time.Time, *
 					log.Warn().Err(errPost).Str("device", u.RNIC.DeviceName).Uint32("qpn", u.QPN).Msg("Failed to post replacement receive buffer after small/bad packet")
 				}
 			}
-			return nil, receiveTime, processedWC, deserializeErr // Return ProcessedWC even on deserialize error
+			return nil, receiveTime, t3Mono, processedWC, deserializeErr // Return ProcessedWC even on deserialize error
 		}
 
 		// Packet successfully deserialized (packet is already a copy)
@@ -567,12 +574,18 @@ func (u *UDQueue) ReceivePacket(ctx context.Context) (*ProbePacket, time.Time, *
 			}
 		}
 
-		return packet, receiveTime, processedWC, nil
+		return packet, receiveTime, t3Mono, processedWC, nil
 	}
 }
 
-// SendFirstAckPacket sends the first ACK packet in response to a probe
-// This corresponds to step 2 in the paper's Figure 4
+// SendFirstAckPacket sends the first ACK packet in response to a probe.
+// This corresponds to step 2 in the paper's Figure 4.
+// Returns (t4Mono, error) where t4Mono is the monotonic CPU clock captured immediately
+// after the SEND WC is observed. It is NOT the HW wallclock (CompletionWallclockNS),
+// which is unreliable for SEND completions on certain RNIC drivers.
+// The caller pairs t4Mono with t3Mono (from ReceivePacket) to compute a corrected t4:
+//
+//	t4_corrected = t3Hw + (t4Mono - t3Mono)
 func (u *UDQueue) SendFirstAckPacket(
 	targetGID string,
 	targetQPN uint32,
@@ -628,8 +641,14 @@ func (u *UDQueue) SendFirstAckPacket(
 		if wc.Status != C.IBV_WC_SUCCESS {
 			return time.Time{}, fmt.Errorf("First ACK send completion failed: %d", wc.Status)
 		}
-		sendCompletionTime := time.Unix(0, int64(wc.CompletionWallclockNS)) // use HW timestamp
-		return sendCompletionTime, nil
+		// Capture monotonic clock immediately after observing the SEND WC.
+		// We intentionally do NOT use wc.CompletionWallclockNS here because on certain
+		// RNIC drivers the SEND completion wallclock is unreliable (can be earlier than
+		// the preceding RECV completion wallclock, producing negative responderDelay).
+		// The caller uses (t4Mono - t3Mono) as the responderDelay interval and then
+		// anchors it to t3Hw to keep everything in the HW clock domain.
+		t4Mono := time.Now()
+		return t4Mono, nil
 	case err := <-u.errChan:
 		return time.Time{}, fmt.Errorf("error during First ACK send: %w", err)
 	case <-time.After(AckSendTimeout): // Timeout
@@ -637,15 +656,30 @@ func (u *UDQueue) SendFirstAckPacket(
 	}
 }
 
-// SendSecondAckPacket sends the second ACK packet with processing delay information
-// This corresponds to step 3 in the paper's Figure 4
+// SendSecondAckPacket sends the second ACK packet with processing delay information.
+// This corresponds to step 3 in the paper's Figure 4.
+//
+// Parameters:
+//   - receiveTime  (t3Hw)   : HW wallclock from the RECV WC (CompletionWallclockNS).
+//   - t3Mono               : Monotonic CPU clock captured right after the RECV WC was observed.
+//   - t4Mono               : Monotonic CPU clock returned by SendFirstAckPacket (captured right
+//                            after the SEND WC was observed).
+//
+// t4 written into the packet is computed as:
+//
+//	t4 = t3Hw + (t4Mono - t3Mono)
+//
+// This anchors the responderDelay interval (t4Mono - t3Mono, measured on the monotonic clock)
+// to the HW clock domain of t3Hw, guaranteeing t4 > t3 and avoiding the SEND-WC wallclock
+// unreliability seen on certain RNIC drivers.
 func (u *UDQueue) SendSecondAckPacket(
 	targetGID string,
 	targetQPN uint32,
 	flowLabel uint32,
 	originalPacket *ProbePacket,
 	receiveTime time.Time,
-	sendCompletionTime time.Time,
+	t3Mono time.Time,
+	t4Mono time.Time,
 ) error {
 	// Use consistent QKey across all UD operations (0x11111111 as in ud_pingpong.c)
 	const qkey uint32 = DefaultQKey
@@ -664,9 +698,14 @@ func (u *UDQueue) SendSecondAckPacket(
 	clearSize := unsafe.Sizeof(ProbePacket{})
 	C.memset(sendBuf, 0, C.size_t(clearSize))
 
-	// Calculate processing delay (T4-T3)
+	// Compute corrected t4 in the HW clock domain:
+	//   t4 = t3Hw + (t4Mono - t3Mono)
+	// The monotonic interval (t4Mono - t3Mono) is the true responder processing time
+	// (probe RECV WC observed → ACK1 SEND WC observed). Anchoring it to t3Hw keeps
+	// the result in the same clock domain as t3, so t4 - t3 is always non-negative.
 	t3 := receiveTime.UnixNano()
-	t4 := sendCompletionTime.UnixNano()
+	monoInterval := t4Mono.Sub(t3Mono)
+	t4 := receiveTime.Add(monoInterval).UnixNano()
 
 	// Prepare the second ACK packet with processing delay information
 	packet := (*ProbePacket)(sendBuf)

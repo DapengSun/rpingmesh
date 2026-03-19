@@ -706,7 +706,7 @@ func (p *Prober) responderLoop(udq *rdma.UDQueue) {
 
 		default:
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-			packet, receiveTime, processedWC, err := udq.ReceivePacket(ctx)
+			packet, receiveTime, t3Mono, processedWC, err := udq.ReceivePacket(ctx)
 			cancel()
 			if err != nil {
 				if !errors.Is(err, context.DeadlineExceeded) {
@@ -806,15 +806,15 @@ func (p *Prober) responderLoop(udq *rdma.UDQueue) {
 				Time("receiveTime", receiveTime).
 				Msg("[responder]: Received probe packet, sending ACKs")
 
-			// Step 2: Send first ACK packet immediately (without processing delay info)
-			firstAckCompletionTime, err := udq.SendFirstAckPacket(sourceGID, sourceQPN, processedWC.FlowLabel, packet, receiveTime)
+			// Step 2: Send first ACK packet immediately (without processing delay info).
+			// t4Mono is the monotonic clock captured right after the SEND WC is observed;
+			// it is NOT the HW wallclock (which is unreliable for SEND completions on some drivers).
+			t4Mono, err := udq.SendFirstAckPacket(sourceGID, sourceQPN, processedWC.FlowLabel, packet, receiveTime)
 			if err != nil {
 				atomic.AddUint64(&errorPackets, 1)
 				log.Error().Err(err).
 					Str("sourceGID", sourceGID).
 					Uint32("sourceQPN", sourceQPN).
-					Str("targetGID", sourceGID).    // This should be sending_device for logging consistency? No, target is the original prober.
-					Uint32("targetQPN", sourceQPN). // Same as above.
 					Uint32("flowLabel", processedWC.FlowLabel).
 					Uint64("seqNum", packet.SequenceNum).
 					Msg("[responder]: Failed to send first ACK packet")
@@ -826,11 +826,13 @@ func (p *Prober) responderLoop(udq *rdma.UDQueue) {
 				Uint32("sourceQPN", sourceQPN).
 				Uint32("flowLabel", processedWC.FlowLabel).
 				Uint64("seqNum", packet.SequenceNum).
-				Time("firstAckCompletionTime", firstAckCompletionTime).
+				Dur("responderDelay_mono", t4Mono.Sub(t3Mono)).
 				Msg("[responder]: Sent first ACK packet")
 
-			// Step 3: Send second ACK packet with processing delay information
-			err = udq.SendSecondAckPacket(sourceGID, sourceQPN, processedWC.FlowLabel, packet, receiveTime, firstAckCompletionTime)
+			// Step 3: Send second ACK packet with corrected t4.
+			// t4 = receiveTime(t3Hw) + (t4Mono - t3Mono), keeping the result in the HW clock
+			// domain of t3 while using the monotonic interval as the responder processing time.
+			err = udq.SendSecondAckPacket(sourceGID, sourceQPN, processedWC.FlowLabel, packet, receiveTime, t3Mono, t4Mono)
 			if err != nil {
 				atomic.AddUint64(&errorPackets, 1)
 				log.Error().Err(err).
