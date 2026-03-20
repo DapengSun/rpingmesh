@@ -3,21 +3,50 @@ package pinglist
 import (
 	"context"
 	"math/rand"
+	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"github.com/yuuki/rpingmesh/internal/controller/registry"
 	"github.com/yuuki/rpingmesh/proto/controller_agent"
 )
 
+// deviceIndexPattern matches device index: mlx5_0, cx5_1 (underscore+digits) or ib0, ib1 (ib+digits).
+// Avoids matching "mlx5" where 5 is part of the model name.
+var deviceIndexPattern = regexp.MustCompile(`(?:^ib|_)(\d+)$`)
+
+// PinglistRegistry defines the registry operations needed for pinglist generation
+type PinglistRegistry interface {
+	GetRNICsByToR(ctx context.Context, torID string) ([]*controller_agent.RnicInfo, error)
+	GetSampleRNICsFromOtherToRs(ctx context.Context, excludeTorID string) ([]*controller_agent.RnicInfo, error)
+}
+
 // PingLister generates pinglists for agents
 type PingLister struct {
-	registry *registry.RnicRegistry
+	registry PinglistRegistry
 	rand     *rand.Rand
 }
 
+// ExtractDeviceIndex parses the device index from DeviceName (e.g., mlx5_0 -> 0, mlx5_1 -> 1).
+// Returns (index, true) if a trailing numeric suffix is found, or (-1, false) if not parseable.
+// Used for same-device-index probing: each RNIC only probes RNICs with the same index on other hosts.
+func ExtractDeviceIndex(deviceName string) (int, bool) {
+	if deviceName == "" {
+		return -1, false
+	}
+	matches := deviceIndexPattern.FindStringSubmatch(deviceName)
+	if len(matches) < 2 {
+		return -1, false
+	}
+	idx, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return -1, false
+	}
+	return idx, true
+}
+
 // NewPingLister creates a new ping lister
-func NewPingLister(registry *registry.RnicRegistry) *PingLister {
+func NewPingLister(registry PinglistRegistry) *PingLister {
 	// Initialize random number generator with a seed
 	source := rand.NewSource(time.Now().UnixNano())
 	rng := rand.New(source)
@@ -59,12 +88,24 @@ func (p *PingLister) generateTorMeshPinglist(
 		return nil, err
 	}
 
+	// Filter: only include targets with same device index (e.g., mlx5_0 probes only mlx5_0 on other hosts)
+	requesterIndex, requesterIndexOK := ExtractDeviceIndex(requesterRnic.DeviceName)
+
 	// Convert to ping targets
 	targets := make([]*controller_agent.PingTarget, 0, len(rnics))
-	for i, rnic := range rnics {
+	targetIndex := 0
+	for _, rnic := range rnics {
 		// Skip the requester RNIC
 		if rnic.Gid == requesterRnic.Gid {
 			continue
+		}
+
+		// Same-device-index filter: only probe RNICs with matching device index
+		if requesterIndexOK {
+			targetIndexVal, targetOK := ExtractDeviceIndex(rnic.DeviceName)
+			if !targetOK || targetIndexVal != requesterIndex {
+				continue
+			}
 		}
 
 		// Create target with source-destination mapping and requester-specific 5-tuple details
@@ -72,16 +113,18 @@ func (p *PingLister) generateTorMeshPinglist(
 			TargetRnic: rnic,
 			SourceRnic: requesterRnic, // Explicit source RNIC information
 			SourcePort: p.generateRequesterSpecificPort(requesterRnic.Gid, rnic.Gid),
-			FlowLabel:  p.generateRequesterSpecificFlowLabel(requesterRnic.Gid, rnic.Gid, i),
+			FlowLabel:  p.generateRequesterSpecificFlowLabel(requesterRnic.Gid, rnic.Gid, targetIndex),
 			Priority:   p.generateRequesterSpecificPriority(requesterRnic.Gid, rnic.Gid),
 		})
+		targetIndex++
 	}
 
 	log.Info().
 		Str("requesterGID", requesterRnic.Gid).
+		Str("requesterDevice", requesterRnic.DeviceName).
 		Str("torID", requesterRnic.TorId).
 		Int("targetCount", len(targets)).
-		Msg("Generated ToR-mesh pinglist")
+		Msg("Generated ToR-mesh pinglist (same-device-index filtered)")
 
 	return targets, nil
 }
@@ -97,24 +140,38 @@ func (p *PingLister) generateInterTorPinglist(
 		return nil, err
 	}
 
+	// Filter: only include targets with same device index (e.g., mlx5_0 probes only mlx5_0 on other hosts)
+	requesterIndex, requesterIndexOK := ExtractDeviceIndex(requesterRnic.DeviceName)
+
 	// Convert to ping targets
 	targets := make([]*controller_agent.PingTarget, 0, len(rnics))
-	for i, rnic := range rnics {
+	targetIndex := 0
+	for _, rnic := range rnics {
+		// Same-device-index filter: only probe RNICs with matching device index
+		if requesterIndexOK {
+			targetIndexVal, targetOK := ExtractDeviceIndex(rnic.DeviceName)
+			if !targetOK || targetIndexVal != requesterIndex {
+				continue
+			}
+		}
+
 		// Create target with source-destination mapping and requester-specific 5-tuple details
 		targets = append(targets, &controller_agent.PingTarget{
 			TargetRnic: rnic,
 			SourceRnic: requesterRnic, // Explicit source RNIC information
 			SourcePort: p.generateRequesterSpecificPort(requesterRnic.Gid, rnic.Gid),
-			FlowLabel:  p.generateRequesterSpecificFlowLabel(requesterRnic.Gid, rnic.Gid, i),
+			FlowLabel:  p.generateRequesterSpecificFlowLabel(requesterRnic.Gid, rnic.Gid, targetIndex),
 			Priority:   p.generateRequesterSpecificPriority(requesterRnic.Gid, rnic.Gid),
 		})
+		targetIndex++
 	}
 
 	log.Info().
 		Str("requesterGID", requesterRnic.Gid).
+		Str("requesterDevice", requesterRnic.DeviceName).
 		Str("excludeTorID", requesterRnic.TorId).
 		Int("targetCount", len(targets)).
-		Msg("Generated Inter-ToR pinglist")
+		Msg("Generated Inter-ToR pinglist (same-device-index filtered)")
 
 	return targets, nil
 }

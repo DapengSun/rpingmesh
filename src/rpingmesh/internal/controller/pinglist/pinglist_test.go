@@ -384,6 +384,70 @@ func TestUnknownPinglistType(t *testing.T) {
 	mockReg.AssertExpectations(t)
 }
 
+func TestExtractDeviceIndex(t *testing.T) {
+	tests := []struct {
+		name       string
+		deviceName string
+		wantIndex  int
+		wantOK     bool
+	}{
+		{"mlx5_0", "mlx5_0", 0, true},
+		{"mlx5_1", "mlx5_1", 1, true},
+		{"mlx5_2", "mlx5_2", 2, true},
+		{"cx5_0", "cx5_0", 0, true},
+		{"ib0", "ib0", 0, true},
+		{"ib1", "ib1", 1, true},
+		{"mlx5_10", "mlx5_10", 10, true},
+		{"empty", "", -1, false},
+		{"no_digits_mlx5", "mlx5", -1, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotIndex, gotOK := ExtractDeviceIndex(tt.deviceName)
+			assert.Equal(t, tt.wantIndex, gotIndex, "index mismatch")
+			assert.Equal(t, tt.wantOK, gotOK, "ok mismatch")
+		})
+	}
+}
+
+func TestGenerateTorMeshPinglistSameDeviceIndexFilter(t *testing.T) {
+	mockReg := &MockRegistry{}
+
+	// Requester is mlx5_0 - should only get targets with mlx5_0
+	requesterRnic := &controller_agent.RnicInfo{
+		Gid:        "fe80:0000:0000:0000:0002:c903:0033:1001",
+		Qpn:        1001,
+		IpAddress:  "192.168.1.1",
+		HostName:  "host-1",
+		TorId:     "tor-A",
+		DeviceName: "mlx5_0",
+	}
+
+	// Same ToR: host-1 mlx5_0 (requester), host-2 mlx5_0, host-2 mlx5_1, host-3 mlx5_0
+	sameToRRnics := []*controller_agent.RnicInfo{
+		requesterRnic,
+		{Gid: "gid-2000", Qpn: 1002, IpAddress: "192.168.1.2", HostName: "host-2", TorId: "tor-A", DeviceName: "mlx5_0"},
+		{Gid: "gid-2001", Qpn: 1003, IpAddress: "192.168.1.2", HostName: "host-2", TorId: "tor-A", DeviceName: "mlx5_1"},
+		{Gid: "gid-3000", Qpn: 1004, IpAddress: "192.168.1.3", HostName: "host-3", TorId: "tor-A", DeviceName: "mlx5_0"},
+	}
+
+	mockReg.On("GetRNICsByToR", mock.Anything, "tor-A").Return(sameToRRnics, nil)
+
+	// Use real PingLister with mock registry to verify same-device-index filtering
+	pingLister := NewPingLister(mockReg)
+
+	ctx := context.Background()
+	targets, err := pingLister.GeneratePinglist(ctx, requesterRnic, controller_agent.PinglistRequest_TOR_MESH)
+	require.NoError(t, err)
+
+	// Should only get host-2 mlx5_0 and host-3 mlx5_0, NOT host-2 mlx5_1
+	require.Len(t, targets, 2, "Should return 2 targets (same device index only)")
+	for _, target := range targets {
+		assert.Equal(t, "mlx5_0", target.TargetRnic.DeviceName, "Target must have same device index (mlx5_0)")
+	}
+	mockReg.AssertExpectations(t)
+}
+
 func TestFlowLabelUniqueness(t *testing.T) {
 	// Create mock registry
 	mockReg := &MockRegistry{}
