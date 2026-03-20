@@ -476,13 +476,34 @@ func (u *UDQueue) handleSendCompletion(gwc *GoWorkCompletion) {
 		Uint32("src_qp", gwc.SrcQP).
 		Uint32("wc_flags", gwc.WCFlags).
 		Uint64("hw_ts_ns", gwc.CompletionWallclockNS).
+		Uint64("wr_id", gwc.WRID).
 		Msg("IBV_WC_SEND")
+
+	// Try to deliver to per-WR-ID channel first (exact matching)
+	if ch, ok := u.pendingSendChans.LoadAndDelete(gwc.WRID); ok {
+		perWRIDChan := ch.(chan *GoWorkCompletion)
+		log.Debug().
+			Str("qpn", fmt.Sprintf("0x%x", u.QPN)).
+			Str("type", getQueueTypeString(u.QueueType)).
+			Uint64("wr_id", gwc.WRID).
+			Msg("[cq_poller] send completion delivered to per-WR-ID channel")
+		perWRIDChan <- gwc
+		return
+	}
+
+	// Fallback to shared sendCompChan if WR-ID not in pendingSendChans
+	log.Debug().
+		Str("qpn", fmt.Sprintf("0x%x", u.QPN)).
+		Str("type", getQueueTypeString(u.QueueType)).
+		Uint64("wr_id", gwc.WRID).
+		Msg("[cq_poller] send completion falling back to shared sendCompChan (WR-ID not in pendingSendChans)")
 	select {
 	case u.sendCompChan <- gwc:
 	default:
 		log.Warn().
 			Str("qpn", fmt.Sprintf("0x%x", u.QPN)).
 			Str("type", getQueueTypeString(u.QueueType)).
+			Uint64("wr_id", gwc.WRID).
 			Msg("Send completion channel full, dropping WC_SEND event. gwc will be freed.")
 	}
 }

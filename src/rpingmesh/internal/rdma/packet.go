@@ -218,6 +218,15 @@ func (u *UDQueue) SendProbePacket(
 		Uint64("send_wrid", sendWRID).
 		Msg("Probe packet prepared, posting send")
 
+	// Pre-register per-WR-ID channel for exact completion matching
+	sendCh := make(chan *GoWorkCompletion, 1)
+	u.pendingSendChans.Store(sendWRID, sendCh)
+
+	log.Debug().
+		Uint64("send_wrid", sendWRID).
+		Uint64("sequence_num", sequenceNum).
+		Msg("[probe_send] post_send submitted, waiting for T2 (pre-registered per-WR-ID channel)")
+
 	if ret := C.post_send_with_wrid(
 		u.QP,
 		C.uint64_t(uintptr(sendBuf)),
@@ -228,6 +237,8 @@ func (u *UDQueue) SendProbePacket(
 		C.uint32_t(DefaultQKey),
 		C.uint64_t(sendWRID),
 	); ret != 0 {
+		// post_send failed, clean up the pre-registered channel
+		u.pendingSendChans.Delete(sendWRID)
 		log.Error().
 			Int("post_send_ret", int(ret)).
 			Str("target_dest_rnic_gid", targetGID).
@@ -251,10 +262,10 @@ func (u *UDQueue) SendProbePacket(
 		Int("send_slot", sendSlot).
 		Msg("post_send successful")
 
-	// Wait for completion notification from CQ poller
+	// Wait for completion notification from per-WR-ID channel
 	select {
-	case wc := <-u.sendCompChan:
-		// Received send completion event
+	case wc := <-sendCh:
+		// Received send completion event from per-WR-ID channel
 		if wc.Status != C.IBV_WC_SUCCESS {
 			log.Error().
 				Int("wc_status", wc.Status).
@@ -277,7 +288,8 @@ func (u *UDQueue) SendProbePacket(
 			Msg("Send completion successful for probe packet")
 		return t1, t2, nil
 	case err := <-u.errChan:
-		// Error occurred
+		// Error occurred, clean up the channel entry
+		u.pendingSendChans.Delete(sendWRID)
 		log.Error().Err(err).
 			Str("target_dest_rnic_gid", targetGID).
 			Uint32("flow_label", flowLabel).
@@ -286,13 +298,15 @@ func (u *UDQueue) SendProbePacket(
 			Msg("Error during probe packet send")
 		return time.Time{}, time.Time{}, fmt.Errorf("error during send: %w", err)
 	case <-ctx.Done(): // Context cancelled or timed out
+		// Do NOT delete from pendingSendChans on timeout
+		// Let CQ poller deliver WC to buffered channel, which will be GC'd
 		log.Warn().
 			Str("target_dest_rnic_gid", targetGID).
 			Uint32("flow_label", flowLabel).
 			Uint64("sequence_num", sequenceNum).
 			Int("send_slot", sendSlot).
 			Err(ctx.Err()).
-			Msg("Send probe packet timed out")
+			Msg("Send probe packet timed out (pendingSendChans entry left for CQ poller)")
 		return time.Time{}, time.Time{}, fmt.Errorf("send probe to (%s, %d, %d) timed out: %w", targetGID, targetQPN, sequenceNum, ctx.Err())
 	}
 }
@@ -609,6 +623,10 @@ func (u *UDQueue) SendFirstAckPacket(
 	packet.AckType = 1 // First ACK
 	packet.Flags = 0
 
+	// Pre-register per-WR-ID channel for exact completion matching
+	ack1Ch := make(chan *GoWorkCompletion, 1)
+	u.pendingSendChans.Store(sendWRID, ack1Ch)
+
 	// Use the C helper function to post a send WR from C-allocated memory with WRID
 	if ret := C.post_send_with_wrid(
 		u.QP,
@@ -620,21 +638,28 @@ func (u *UDQueue) SendFirstAckPacket(
 		C.uint32_t(qkey),
 		C.uint64_t(sendWRID),
 	); ret != 0 {
+		// post_send failed, clean up the pre-registered channel
+		u.pendingSendChans.Delete(sendWRID)
 		return time.Time{}, fmt.Errorf("ibv_post_send failed: %d", ret)
 	}
 
-	// Wait for completion notification from CQ poller
+	// Wait for completion notification from per-WR-ID channel
+	timer := time.NewTimer(AckSendTimeout)
+	defer timer.Stop()
+
 	select {
-	case wc := <-u.sendCompChan:
-		// Received send completion event
+	case wc := <-ack1Ch:
+		// Received send completion event from per-WR-ID channel
 		if wc.Status != C.IBV_WC_SUCCESS {
 			return time.Time{}, fmt.Errorf("First ACK send completion failed: %d", wc.Status)
 		}
 		sendCompletionTime := hwTimestampOrNow(wc.CompletionWallclockNS)
 		return sendCompletionTime, nil
 	case err := <-u.errChan:
+		u.pendingSendChans.Delete(sendWRID)
 		return time.Time{}, fmt.Errorf("error during First ACK send: %w", err)
-	case <-time.After(AckSendTimeout): // Timeout
+	case <-timer.C:
+		// Do NOT delete from pendingSendChans on timeout
 		return time.Time{}, fmt.Errorf("timeout waiting for First ACK send completion")
 	}
 }
@@ -680,6 +705,10 @@ func (u *UDQueue) SendSecondAckPacket(
 	packet.AckType = 2 // Second ACK with processing delay
 	packet.Flags = 0
 
+	// Pre-register per-WR-ID channel for exact completion matching
+	ack2Ch := make(chan *GoWorkCompletion, 1)
+	u.pendingSendChans.Store(sendWRID, ack2Ch)
+
 	// Use the C helper function to post a send WR from C-allocated memory with WRID
 	if ret := C.post_send_with_wrid(
 		u.QP,
@@ -691,21 +720,27 @@ func (u *UDQueue) SendSecondAckPacket(
 		C.uint32_t(qkey),
 		C.uint64_t(sendWRID),
 	); ret != 0 {
+		// post_send failed, clean up the pre-registered channel
+		u.pendingSendChans.Delete(sendWRID)
 		return fmt.Errorf("ibv_post_send failed: %d", ret)
 	}
 
-	// Wait for completion notification from CQ poller
+	// Wait for completion notification from per-WR-ID channel
+	timer := time.NewTimer(AckSendTimeout)
+	defer timer.Stop()
+
 	select {
-	case wc := <-u.sendCompChan:
-		// Received send completion event
+	case wc := <-ack2Ch:
+		// Received send completion event from per-WR-ID channel
 		if wc.Status != C.IBV_WC_SUCCESS {
 			return fmt.Errorf("Second ACK send completion failed: %d", wc.Status)
 		}
 		return nil
 	case err := <-u.errChan:
-		// Error occurred
+		u.pendingSendChans.Delete(sendWRID)
 		return fmt.Errorf("error during Second ACK send: %w", err)
-	case <-time.After(AckSendTimeout): // Timeout
+	case <-timer.C:
+		// Do NOT delete from pendingSendChans on timeout
 		return fmt.Errorf("timeout waiting for Second ACK send completion")
 	}
 }

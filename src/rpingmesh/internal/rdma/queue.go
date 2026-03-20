@@ -74,6 +74,9 @@ type UDQueue struct {
 	recvCompChan chan *GoWorkCompletion // Channel for receive completion events (non-ACKs or if no handler)
 	errChan      chan error             // Channel for error notifications
 
+	// Per-WR-ID send completion channels for exact matching
+	pendingSendChans sync.Map // map[uint64]chan *GoWorkCompletion, key is sendWRID
+
 	// CQ polling goroutine control
 	cqPollerRunning bool
 	cqPollerDone    chan struct{}
