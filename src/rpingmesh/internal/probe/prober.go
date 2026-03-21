@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"github.com/yuuki/rpingmesh/internal/agent/errorlog"
 	"github.com/yuuki/rpingmesh/internal/rdma"
 	"github.com/yuuki/rpingmesh/internal/state"
 	"github.com/yuuki/rpingmesh/proto/agent_analyzer"
@@ -53,10 +55,17 @@ type ackEvent struct {
 	WorkComp   *rdma.ProcessedWorkCompletion
 }
 
+// ErrorLogger writes timeout/error events to a dedicated file. Optional.
+type ErrorLogger interface {
+	WriteTimeout(e *errorlog.TimeoutEntry)
+	WriteAckSendTimeout(e *errorlog.AckSendTimeoutEntry)
+}
+
 // Prober is responsible for sending probe packets and collecting results.
 type Prober struct {
 	rdmaManager  *rdma.RDMAManager
 	agentState   *state.AgentState
+	errorLogger  ErrorLogger // optional, for timeout logging
 	probeResults chan *agent_analyzer.ProbeResult
 	stopCh       chan struct{}
 	wg           sync.WaitGroup
@@ -99,8 +108,13 @@ func NewProber(manager *rdma.RDMAManager, agentState *state.AgentState) *Prober 
 		stopCh:             make(chan struct{}),
 		sessions:           sync.Map{},
 		nextSeqNum:         0,
-		serviceFlowTargets: make([]*PingTarget, 0), // Changed from monitor.PingTarget
+		serviceFlowTargets: make([]*PingTarget, 0),
 	}
+}
+
+// SetErrorLogger sets the optional error logger for timeout events.
+func (p *Prober) SetErrorLogger(logger ErrorLogger) {
+	p.errorLogger = logger
 }
 
 // UpdateServiceFlowTargets is called by ServiceFlowMonitor to update the list of service flow targets.
@@ -263,6 +277,14 @@ func (p *Prober) runServiceProbingLoop() {
 // generateSessionKey creates a unique session key for probe tracking
 func (p *Prober) generateSessionKey(sourceGid, targetGid string, seqNum uint64) string {
 	return fmt.Sprintf("%s->%s:%d", sourceGid, targetGid, seqNum)
+}
+
+// extractIPFromGID extracts IPv4 from GID (e.g. ::ffff:10.106.1.1 -> 10.106.1.1)
+func extractIPFromGID(gid string) string {
+	if idx := strings.Index(gid, "::ffff:"); idx >= 0 {
+		return gid[idx+7:]
+	}
+	return gid
 }
 
 // ProbeTarget sends a single probe to a target RNIC.
@@ -502,6 +524,32 @@ func (p *Prober) ProbeTarget(
 			result.Status = agent_analyzer.ProbeResult_TIMEOUT
 			// Update statistics using atomic operation
 			atomic.AddUint64(&p.stats.AckTimeouts, 1)
+
+			// Write to error log for troubleshooting (separate from main log, no rotation)
+			if p.errorLogger != nil {
+				ackReceived := 0
+				if ack1Received {
+					ackReceived++
+				}
+				if ack2Received {
+					ackReceived++
+				}
+				p.errorLogger.WriteTimeout(&errorlog.TimeoutEntry{
+					SrcGID:      actualSrcGid,
+					DstGID:      actualDstGid,
+					SrcDev:      result.SourceRnic.GetDeviceName(),
+					DstDev:      result.DestinationRnic.GetDeviceName(),
+					SrcHost:     result.SourceRnic.GetHostName(),
+					DstHost:     result.DestinationRnic.GetHostName(),
+					SrcIP:       extractIPFromGID(actualSrcGid),
+					DstIP:       extractIPFromGID(actualDstGid),
+					ProbeType:   target.ProbeType,
+					Seq:         seqNum,
+					RttUs:       -1,
+					AckReceived: ackReceived,
+					AckTotal:    2,
+				})
+			}
 
 			p.probeResults <- result
 			return
@@ -845,6 +893,18 @@ func (p *Prober) responderLoop(udq *rdma.UDQueue) {
 					Uint32("flowLabel", processedWC.FlowLabel).
 					Uint64("seqNum", packet.SequenceNum).
 					Msg("[responder]: Failed to send first ACK packet")
+				if p.errorLogger != nil && strings.Contains(err.Error(), "timeout") {
+					p.errorLogger.WriteAckSendTimeout(&errorlog.AckSendTimeoutEntry{
+						AckType: 1,
+						SrcGID:  udq.RNIC.GID,
+						DstGID:  sourceGID,
+						SrcDev:  udq.RNIC.DeviceName,
+						SrcHost: p.agentState.GetHostName(),
+						SrcIP:   udq.RNIC.IPAddr,
+						DstIP:   extractIPFromGID(sourceGID),
+						Seq:     packet.SequenceNum,
+					})
+				}
 				continue
 			}
 
@@ -869,6 +929,18 @@ func (p *Prober) responderLoop(udq *rdma.UDQueue) {
 					Uint32("flowLabel", processedWC.FlowLabel).
 					Uint64("seqNum", packet.SequenceNum).
 					Msg("[responder]: Failed to send second ACK packet")
+				if p.errorLogger != nil && strings.Contains(err.Error(), "timeout") {
+					p.errorLogger.WriteAckSendTimeout(&errorlog.AckSendTimeoutEntry{
+						AckType: 2,
+						SrcGID:  udq.RNIC.GID,
+						DstGID:  sourceGID,
+						SrcDev:  udq.RNIC.DeviceName,
+						SrcHost: p.agentState.GetHostName(),
+						SrcIP:   udq.RNIC.IPAddr,
+						DstIP:   extractIPFromGID(sourceGID),
+						Seq:     packet.SequenceNum,
+					})
+				}
 				continue
 			}
 

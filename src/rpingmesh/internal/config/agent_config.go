@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/pflag"
@@ -32,6 +33,12 @@ type AgentConfig struct {
 	GIDIndex                  int
 	PinglistUpdateIntervalSec uint32
 	TargetProbeRatePerSecond  int // Probe rate per second per target
+
+	// Error log: timeouts and other errors to a separate file (no rotation by main log)
+	ErrorLogEnabled    bool
+	ErrorLogPath       string // Default: data/agent_errors.log relative to config dir
+	ErrorLogMaxSizeMB  int    // 20, rotate when exceeded
+	ErrorLogMaxBackups int    // 3
 }
 
 // SetupAgentFlags sets up the command line flags for the agent
@@ -58,6 +65,10 @@ func SetupAgentFlags(flagSet *pflag.FlagSet) {
 	flagSet.Int("gid-index", 0, "GID Index to use for RDMA devices (default: 0). Must be >= 0.")
 	flagSet.Uint32("pinglist-update-interval-sec", 300, "Pinglist update interval in seconds (default: 5 minutes)")
 	flagSet.Int("target-probe-rate-per-second", DefaultTargetProbeRatePerSecond, "Probe rate per second per target")
+	flagSet.Bool("error-log-enabled", true, "Write timeout/error events to a separate file")
+	flagSet.String("error-log-path", "", "Path for error log (default: data/agent_errors.log relative to config)")
+	flagSet.Int("error-log-max-size-mb", 20, "Max size in MB before rotation")
+	flagSet.Int("error-log-max-backups", 3, "Number of rotated backups to keep")
 }
 
 // LoadAgentConfig loads the configuration for an agent from a file or environment variables
@@ -119,6 +130,30 @@ func LoadAgentConfig(flagSet *pflag.FlagSet) (*AgentConfig, error) {
 		GIDIndex:                  v.GetInt("gid-index"),
 		PinglistUpdateIntervalSec: v.GetUint32("pinglist-update-interval-sec"),
 		TargetProbeRatePerSecond:  v.GetInt("target-probe-rate-per-second"),
+		ErrorLogEnabled:           v.GetBool("error-log-enabled"),
+		ErrorLogPath:              v.GetString("error-log-path"),
+		ErrorLogMaxSizeMB:         v.GetInt("error-log-max-size-mb"),
+		ErrorLogMaxBackups:        v.GetInt("error-log-max-backups"),
+	}
+	if config.ErrorLogMaxSizeMB <= 0 {
+		config.ErrorLogMaxSizeMB = 20
+	}
+	if config.ErrorLogMaxBackups <= 0 {
+		config.ErrorLogMaxBackups = 3
+	}
+	if config.ErrorLogEnabled && config.ErrorLogPath == "" {
+		if cfgPath := v.ConfigFileUsed(); cfgPath != "" {
+			configDir := filepath.Dir(cfgPath)
+			// data/agent_errors.log next to config dir (e.g. /app/config -> /app/data/agent_errors.log)
+			derived := filepath.Join(configDir, "..", "data", "agent_errors.log")
+			if abs, err := filepath.Abs(derived); err == nil {
+				config.ErrorLogPath = abs
+			} else {
+				config.ErrorLogPath = derived
+			}
+		} else {
+			config.ErrorLogPath = "data/agent_errors.log"
+		}
 	}
 
 	if config.GIDIndex < 0 {
@@ -152,6 +187,10 @@ func WriteDefaultConfig(path string) error {
 	v.Set("allowed-device-names", []string{})
 	v.Set("gid-index", 0)
 	v.Set("pinglist-update-interval-sec", 300)
+	v.Set("error-log-enabled", true)
+	v.Set("error-log-path", "")
+	v.Set("error-log-max-size-mb", 20)
+	v.Set("error-log-max-backups", 3)
 
 	// Write the config file
 	if err := v.WriteConfig(); err != nil {

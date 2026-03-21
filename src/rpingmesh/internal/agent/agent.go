@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/yuuki/rpingmesh/internal/agent/controller_client"
+	"github.com/yuuki/rpingmesh/internal/agent/errorlog"
 	"github.com/yuuki/rpingmesh/internal/agent/serviceflowmonitor"
 	"github.com/yuuki/rpingmesh/internal/agent/telemetry"
 	"github.com/yuuki/rpingmesh/internal/config"
@@ -69,6 +70,7 @@ type Agent struct {
 	metrics            *telemetry.Metrics
 	serviceTracer      *ebpf.ServiceTracer
 	serviceFlowMonitor *serviceflowmonitor.ServiceFlowMonitor
+	errorLogger        *errorlog.Logger
 	wg                 sync.WaitGroup
 }
 
@@ -150,6 +152,19 @@ func (a *Agent) Start() error {
 
 	// Create prober - Prober itself does not start its loops yet.
 	a.prober = probe.NewProber(a.agentState.GetRDMAManager(), a.agentState)
+
+	// Initialize error log (timeouts) if enabled
+	if a.config.ErrorLogEnabled && a.config.ErrorLogPath != "" {
+		el, err := errorlog.New(a.config.ErrorLogPath, true, a.config.ErrorLogMaxSizeMB, a.config.ErrorLogMaxBackups)
+		if err != nil {
+			log.Warn().Err(err).Str("path", a.config.ErrorLogPath).Msg("Failed to create error log, timeout logging disabled")
+		} else {
+			a.errorLogger = el
+			a.prober.SetErrorLogger(el)
+			log.Debug().Str("path", a.config.ErrorLogPath).Msg("Error log (timeouts) enabled")
+		}
+	}
+
 	log.Debug().Msg("Prober instance created")
 
 	// Set the ACK handler in AgentState now that prober is created.
@@ -659,6 +674,12 @@ func (a *Agent) Stop() {
 		defer cancel()
 		if err := a.metrics.Shutdown(shutdownCtx); err != nil {
 			log.Error().Err(err).Msg("Failed to shutdown metrics properly")
+		}
+	}
+
+	if a.errorLogger != nil {
+		if err := a.errorLogger.Close(); err != nil {
+			log.Warn().Err(err).Msg("Failed to close error log")
 		}
 	}
 
