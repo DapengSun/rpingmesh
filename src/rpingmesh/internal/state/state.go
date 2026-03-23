@@ -227,6 +227,18 @@ func (a *AgentState) GetResponderUDQueue(gid string) *rdma.UDQueue {
 	return a.responderQueues[gid]
 }
 
+// SetUnmatchedWCReporter sets the reporter for unmatched send completions on all UD queues.
+func (a *AgentState) SetUnmatchedWCReporter(reporter rdma.UnmatchedSendWCReporter) {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	for _, q := range a.senderQueues {
+		q.SetUnmatchedWCReporter(reporter)
+	}
+	for _, q := range a.responderQueues {
+		q.SetUnmatchedWCReporter(reporter)
+	}
+}
+
 // GetRDMAManager returns the RDMA manager
 func (a *AgentState) GetRDMAManager() *rdma.RDMAManager {
 	a.mutex.RLock()

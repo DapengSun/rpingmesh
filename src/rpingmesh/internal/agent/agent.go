@@ -177,6 +177,21 @@ func (a *Agent) Start() error {
 	}
 	log.Debug().Msg("Agent UD queues initialized with ACK handler")
 
+	// Register unmatched send WC reporter to log to agent_errors (strict matching, no fallback to sendCompChan)
+	if a.errorLogger != nil {
+		reporter := func(deviceName, gid, ipAddr string, qpn uint32, wrID uint64) {
+			a.errorLogger.WriteUnmatchedSendWC(&errorlog.UnmatchedSendWCEntry{
+				Dev:  deviceName,
+				GID:  gid,
+				IP:   ipAddr,
+				QPN:  qpn,
+				WRID: wrID,
+				Host: a.agentState.GetHostName(),
+			})
+		}
+		a.agentState.SetUnmatchedWCReporter(reporter)
+	}
+
 	// Now that UD queues are ready (including those for the prober), start the prober's internal loops.
 	if err := a.prober.Start(); err != nil {
 		return fmt.Errorf("failed to start prober: %w", err)
