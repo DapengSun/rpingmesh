@@ -187,3 +187,56 @@ func TestMixedTypesInSameLog(t *testing.T) {
 		t.Errorf("line1: expected type=ack_send_timeout, got %s", lines[1])
 	}
 }
+
+func TestUnmatchedSendWCEntryJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "agent_errors.log")
+	l, err := New(path, true, 20, 3)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer l.Close()
+
+	e := &UnmatchedSendWCEntry{
+		Dev:  "mlx5_0",
+		GID:  "::ffff:10.106.1.1",
+		IP:   "10.106.1.1",
+		QPN:  0x1234,
+		WRID: 987654321,
+		Host: "node001",
+	}
+	l.WriteUnmatchedSendWC(e)
+
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer f.Close()
+
+	sc := bufio.NewScanner(f)
+	if !sc.Scan() {
+		t.Fatal("Expected one line")
+	}
+	line := sc.Text()
+	if !strings.Contains(line, `"type":"unmatched_send_wc"`) {
+		t.Errorf("Expected type=unmatched_send_wc, got %s", line)
+	}
+	if !strings.Contains(line, `"dev":"mlx5_0"`) {
+		t.Errorf("Expected dev=mlx5_0, got %s", line)
+	}
+	if !strings.Contains(line, `"gid":"::ffff:10.106.1.1"`) {
+		t.Errorf("Expected gid, got %s", line)
+	}
+	if !strings.Contains(line, `"ip":"10.106.1.1"`) {
+		t.Errorf("Expected ip, got %s", line)
+	}
+	if !strings.Contains(line, `"qpn":4660`) {
+		t.Errorf("Expected qpn=4660 (0x1234), got %s", line)
+	}
+	if !strings.Contains(line, `"wr_id":987654321`) {
+		t.Errorf("Expected wr_id=987654321, got %s", line)
+	}
+	if !strings.Contains(line, `"host":"node001"`) {
+		t.Errorf("Expected host=node001, got %s", line)
+	}
+}

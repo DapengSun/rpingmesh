@@ -20,6 +20,9 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// UnmatchedSendWCReporter is called when a send completion's WR-ID is not found in pendingSendChans.
+type UnmatchedSendWCReporter func(deviceName, gid, ipAddr string, qpn uint32, wrID uint64)
+
 // UDQueueType defines the role of the UDQueue
 type UDQueueType int
 
@@ -76,6 +79,10 @@ type UDQueue struct {
 
 	// Per-WR-ID send completion channels for exact matching
 	pendingSendChans sync.Map // map[uint64]chan *GoWorkCompletion, key is sendWRID
+
+	// Optional reporter for unmatched send completions (WR-ID not in pendingSendChans)
+	unmatchedSendWCReporter   UnmatchedSendWCReporter
+	unmatchedSendWCReporterMu sync.RWMutex
 
 	// CQ polling goroutine control
 	cqPollerRunning bool
@@ -544,6 +551,13 @@ func (u *UDQueue) CreateAddressHandle(targetGID string, flowLabel uint32) (*C.st
 	}
 
 	return ah, nil
+}
+
+// SetUnmatchedWCReporter sets the optional reporter for unmatched send completions.
+func (u *UDQueue) SetUnmatchedWCReporter(reporter UnmatchedSendWCReporter) {
+	u.unmatchedSendWCReporterMu.Lock()
+	defer u.unmatchedSendWCReporterMu.Unlock()
+	u.unmatchedSendWCReporter = reporter
 }
 
 // Destroy releases all resources associated with the UD queue

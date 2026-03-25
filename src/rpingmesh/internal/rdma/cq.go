@@ -491,20 +491,19 @@ func (u *UDQueue) handleSendCompletion(gwc *GoWorkCompletion) {
 		return
 	}
 
-	// Fallback to shared sendCompChan if WR-ID not in pendingSendChans
-	log.Debug().
-		Str("qpn", fmt.Sprintf("0x%x", u.QPN)).
+	// Strict matching: WR-ID not found, log and report (no fallback to sendCompChan)
+	log.Warn().
+		Str("device", u.RNIC.DeviceName).
+		Str("gid", u.RNIC.GID).
+		Uint32("qpn", u.QPN).
 		Str("type", getQueueTypeString(u.QueueType)).
 		Uint64("wr_id", gwc.WRID).
-		Msg("[cq_poller] send completion falling back to shared sendCompChan (WR-ID not in pendingSendChans)")
-	select {
-	case u.sendCompChan <- gwc:
-	default:
-		log.Warn().
-			Str("qpn", fmt.Sprintf("0x%x", u.QPN)).
-			Str("type", getQueueTypeString(u.QueueType)).
-			Uint64("wr_id", gwc.WRID).
-			Msg("Send completion channel full, dropping WC_SEND event. gwc will be freed.")
+		Msg("[cq_poller] send completion WR-ID not in pendingSendChans, discarding (strict matching)")
+	u.unmatchedSendWCReporterMu.RLock()
+	reporter := u.unmatchedSendWCReporter
+	u.unmatchedSendWCReporterMu.RUnlock()
+	if reporter != nil {
+		reporter(u.RNIC.DeviceName, u.RNIC.GID, u.RNIC.IPAddr, u.QPN, gwc.WRID)
 	}
 }
 

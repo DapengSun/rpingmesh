@@ -30,6 +30,18 @@ type TimeoutEntry struct {
 	AckTotal    int     `json:"ack_total"`    // always 2
 }
 
+// UnmatchedSendWCEntry represents a send completion whose WR-ID was not found in pendingSendChans.
+type UnmatchedSendWCEntry struct {
+	Type      string `json:"type"`  // "unmatched_send_wc"
+	Timestamp string `json:"ts"`    // ISO8601
+	Dev       string `json:"dev"`   // device name
+	GID       string `json:"gid"`
+	IP        string `json:"ip"`
+	QPN       uint32 `json:"qpn"`
+	WRID      uint64 `json:"wr_id"`
+	Host      string `json:"host"`
+}
+
 // AckSendTimeoutEntry represents an ACK send timeout (Responder failing to send ACK).
 type AckSendTimeoutEntry struct {
 	Type      string `json:"type"`       // "ack_send_timeout"
@@ -131,6 +143,32 @@ func (l *Logger) WriteAckSendTimeout(e *AckSendTimeoutEntry) {
 	data, err := json.Marshal(e)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to marshal ack_send_timeout entry")
+		return
+	}
+	line := append(data, '\n')
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	n, err := l.file.Write(line)
+	if err != nil {
+		log.Warn().Err(err).Str("path", l.path).Msg("Failed to write error log")
+		return
+	}
+	l.size += int64(n)
+	if l.maxSizeMB > 0 && l.size >= int64(l.maxSizeMB)*1024*1024 {
+		l.rotate()
+	}
+}
+
+// WriteUnmatchedSendWC writes an unmatched send WC entry (agent_errors).
+func (l *Logger) WriteUnmatchedSendWC(e *UnmatchedSendWCEntry) {
+	if l == nil || !l.enabled {
+		return
+	}
+	e.Type = "unmatched_send_wc"
+	e.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
+	data, err := json.Marshal(e)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to marshal unmatched_send_wc entry")
 		return
 	}
 	line := append(data, '\n')
